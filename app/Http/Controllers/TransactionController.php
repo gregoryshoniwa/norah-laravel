@@ -41,7 +41,6 @@ class TransactionController extends Controller
 
             $user = User::where('email', $request['user'])->first();
 
-
              // Save the confirmation to the database
             $transaction = new Transaction();
             $transaction->type = 'CONFIRM';
