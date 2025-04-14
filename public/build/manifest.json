@@ -1,0 +1,79 @@
+{
+  "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff": {
+    "file": "assets/bootstrap-icons-BOrJxbIo.woff",
+    "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff"
+  },
+  "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2": {
+    "file": "assets/bootstrap-icons-BtvjY1KL.woff2",
+    "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-C8G0Jby7.css",
+    "src": "resources/css/app.css",
+    "isEntry": true
+  },
+  "resources/fonts/flaticon.eot": {
+    "file": "assets/flaticon-C84ygiNd.eot",
+    "src": "resources/fonts/flaticon.eot"
+  },
+  "resources/fonts/flaticon.svg": {
+    "file": "assets/flaticon-CMoRJvss.svg",
+    "src": "resources/fonts/flaticon.svg"
+  },
+  "resources/fonts/flaticon.ttf": {
+    "file": "assets/flaticon-Br0gFXdl.ttf",
+    "src": "resources/fonts/flaticon.ttf"
+  },
+  "resources/fonts/flaticon.woff": {
+    "file": "assets/flaticon-CuZ950ds.woff",
+    "src": "resources/fonts/flaticon.woff"
+  },
+  "resources/fonts/flaticon.woff2": {
+    "file": "assets/flaticon-hwaVMupF.woff2",
+    "src": "resources/fonts/flaticon.woff2"
+  },
+  "resources/fonts/remixicon.eot": {
+    "file": "assets/remixicon-Crkp6QDu.eot",
+    "src": "resources/fonts/remixicon.eot"
+  },
+  "resources/fonts/remixicon.svg": {
+    "file": "assets/remixicon-bgXgLUrR.svg",
+    "src": "resources/fonts/remixicon.svg"
+  },
+  "resources/fonts/remixicon.ttf": {
+    "file": "assets/remixicon-t1-W4cIE.ttf",
+    "src": "resources/fonts/remixicon.ttf"
+  },
+  "resources/fonts/remixicon.woff": {
+    "file": "assets/remixicon-ChM2DbYV.woff",
+    "src": "resources/fonts/remixicon.woff"
+  },
+  "resources/fonts/remixicon.woff2": {
+    "file": "assets/remixicon-D6lcKq3b.woff2",
+    "src": "resources/fonts/remixicon.woff2"
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-Ba--HT7p.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "css": [
+      "assets/app-Ce47yYTZ.css",
+      "assets/app-C8G0Jby7.css"
+    ],
+    "assets": [
+      "assets/bootstrap-icons-BtvjY1KL.woff2",
+      "assets/bootstrap-icons-BOrJxbIo.woff",
+      "assets/flaticon-Br0gFXdl.ttf",
+      "assets/flaticon-CuZ950ds.woff",
+      "assets/flaticon-hwaVMupF.woff2",
+      "assets/flaticon-C84ygiNd.eot",
+      "assets/flaticon-CMoRJvss.svg",
+      "assets/remixicon-Crkp6QDu.eot",
+      "assets/remixicon-D6lcKq3b.woff2",
+      "assets/remixicon-ChM2DbYV.woff",
+      "assets/remixicon-t1-W4cIE.ttf",
+      "assets/remixicon-bgXgLUrR.svg"
+    ]
+  }
+}
