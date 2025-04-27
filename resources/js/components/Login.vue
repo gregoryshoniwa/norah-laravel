@@ -119,30 +119,35 @@
           this.isLoading = false;
 
           if (response.data.token) {
-            const {
-              token,
-              refreshToken,
-              tokenExpiryDate,
-              refreshTokenExpiryDate,
-              user_id,
-              role,
-              fullName,
-              email
-            } = response.data;
+            // Store the auth token and user data
+            localStorage.setItem('authToken', response.data.token);
+            localStorage.setItem('user', JSON.stringify({
+              user_id: response.data.user_id,
+              role: response.data.role,
+              fullName: response.data.fullName,
+              email: response.data.email
+            }));
 
-            this.$swal.fire(
-              "Success!",
-              "You have successfully logged in!",
-              "success"
-            );
+            // Store refresh token if needed
+            if (response.data.refreshToken) {
+              localStorage.setItem('refreshToken', response.data.refreshToken);
+            }
 
-            // Save session data to IndexedDB
-            // const tx = this.db.transaction("sessions", "readwrite");
-            // const store = tx.objectStore("sessions");
-            // await store.put({ key: "session_data", ...response.data });
-            // await tx.done;
+            this.$swal.fire({
+              title: "Success!",
+              text: "You have successfully logged in!",
+              icon: "success",
+              timer: 1500,
+              showConfirmButton: false
+            });
 
-            this.$router.push('/dashboard');
+            // Set default Authorization header for all future requests
+            axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+
+            // Redirect to dashboard
+            setTimeout(() => {
+              this.$router.push('/dashboard');
+            }, 1500);
           } else {
             console.error("Unexpected response:", response.data);
             this.$swal.fire(

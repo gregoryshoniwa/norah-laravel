@@ -374,11 +374,16 @@ export default {
   },
     data() {
         return {
+            pollingInterval: null,
+            pollAttempts: 0,
+            maxPollAttempts: 60, // 5 minutes at 5s intervals or 30 minutes at 30s intervals
             colors: {
                 dark: '#000000',
                 light: '#ffffff',
 
             },
+            trace : '',
+            returnUrl: '',
             code: '',
             qrCode: '',
             isLoading: false,
@@ -632,7 +637,9 @@ export default {
             this.isLoading = false;
             if (response.data.success) {
 
-                this.confirmPaymentSuccess(response.data.data);
+                this.confirmPaymentSuccess(response.data.data,response.data.trace);
+                this.trace = response.data.trace;
+                this.returnUrl = response.data.returnUrl;
 
             } else {
                 this.$swal.fire(
@@ -653,56 +660,156 @@ export default {
             // alert('An error occurred while confirming the payment.');
         }
     },
-        confirmPaymentSuccess(data) {
-            console.log('Response:', data);
-            const paymentType = this.selectedPaymentType;
+    async confirmPaymentSuccess(data, trace) {
             this.code = data.code;
             this.qrCode = data.code;
+            this.trace = trace;
 
-            if (paymentType === "card") {
-            // For card payments, confirm the payment with card details
-            const details = `${this.selectedMethodName} card ending in ${this.paymentDetails.cardNumber.slice(-4)}`;
-            alert(`Payment of ${this.payment.currency} ${this.formatAmount(this.payment.total)} confirmed with ${details}!`);
-            } else if (paymentType === "mobile") {
-            // For mobile payments (EcoCash or InnBucks), start a countdown timer
-            this.isProcessing = true;
+            if (this.selectedPaymentType === "mobile") {
+                this.isProcessing = true;
 
-            // Set countdown time based on the selected method
-            if (this.selectedMethod === "innbuck") {
-                this.countdownTime = 10 * 60; // 10 minutes in seconds
-            } else if (this.selectedMethod === "ecocash") {
-                this.countdownTime = 1 * 60; // 1 minute in seconds
+                // Set countdown time based on the selected method
+                if (this.selectedMethod === "innbuck") {
+                    this.countdownTime = 10 * 60; // 10 minutes in seconds
+                } else if (this.selectedMethod === "ecocash") {
+                    this.countdownTime = 1 * 60; // 1 minute in seconds
+                }
+
+                this.remainingTime = this.countdownTime;
+
+                // Start countdown timer
+                this.countdownInterval = setInterval(() => {
+                    if (this.remainingTime > 0) {
+                        this.remainingTime--;
+                    } else {
+                        clearInterval(this.countdownInterval);
+                        this.stopPolling();
+                        this.$swal.fire(
+                            "Timeout",
+                            "Payment session timed out. Please try again.",
+                            "error"
+                        );
+                        this.isProcessing = false;
+                    }
+                }, 1000);
+
+                // Start polling
+                this.startPolling(trace);
+            }
+        },
+
+        startPolling(trace) {
+            this.pollAttempts = 0;
+            this.pollingInterval = setInterval(() => {
+                this.checkTransactionStatus(trace);
+            }, this.selectedMethod === "innbuck" ? 30000 : 5000); // 30s or 5s
+        },
+
+        stopPolling() {
+            if (this.pollingInterval) {
+                clearInterval(this.pollingInterval);
+                this.pollingInterval = null;
+            }
+        },
+
+        async checkTransactionStatus(trace) {
+            if (this.pollAttempts >= this.maxPollAttempts) {
+                this.stopPolling();
+                this.$swal.fire(
+                    "Timeout",
+                    "Maximum polling attempts reached. Please check your payment status later.",
+                    "error"
+                );
+                this.isProcessing = false;
+                window.location.href = this.returnUrl;
+                return;
             }
 
-            // Initialize the remaining time to the full countdown time
-            this.remainingTime = this.countdownTime;
+            this.pollAttempts++;
 
-            // Start the countdown timer
-            this.countdownInterval = setInterval(() => {
-                if (this.remainingTime > 0) {
-                this.remainingTime--;
+            try {
+                const response = await axios.post('/api/v1/transactions/status', {
+                    trace: this.trace
+                });
 
-                // Simulate a successful payment randomly (for demo purposes)
-                if (Math.random() < 0.001) { // 0.1% chance each second
+                if (response.data.status === 'COMPLETED') {
+                    this.stopPolling();
                     clearInterval(this.countdownInterval);
-                    alert("Payment successful! Thank you for your purchase.");
+                    this.$swal.fire(
+                        "Success",
+                        "Your transaction was successfully completed!",
+                        "success"
+                    ).then(() => {
+                        window.location.href = this.returnUrl;
+                    });
                     this.isProcessing = false;
+                } else if (response.data.status === 'FAILED' || response.data.status === 'CANCELLED') {
+                    this.stopPolling();
+                    clearInterval(this.countdownInterval);
+                    this.$swal.fire(
+                        "Error",
+                        response.data.responseMessage || "Transaction failed.",
+                        "error"
+                    );
+                    this.isProcessing = false;
+                    window.location.href = this.returnUrl;
                 }
-                } else {
-                // Time's up, clear the interval
-                clearInterval(this.countdownInterval);
-                alert("Payment session timed out. Please try again.");
-                this.isProcessing = false;
-                }
-            }, 1000); // Update every second
+                // If status is still pending, continue polling
+            } catch (error) {
+                console.error('Error checking transaction status:', error);
+                this.$swal.fire(
+                    "Error",
+                    "An error occurred while checking the transaction status.",
+                    "error"
+                );
+                window.location.href = this.returnUrl;
+                // Continue polling even if there's an error (network issues, etc.)
             }
         },
 
         cancelPaymentProcess() {
-            clearInterval(this.countdownInterval); // Stop the countdown timer
-            this.isProcessing = false; // Reset the processing state
-            alert("Payment process canceled.");
+            this.$swal.fire({
+                title: "Are you sure?",
+                text: "You are about to cancel the payment process.",
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonText: "Yes, cancel it!",
+                cancelButtonText: "No, keep it"
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    try {
+                        const response = await axios.post('/api/v1/transactions/cancel', {
+                            trace: this.trace
+                        });
+
+                        this.stopPolling();
+                        clearInterval(this.countdownInterval);
+                        this.isProcessing = false;
+
+                        this.$swal.fire(
+                            "Cancelled",
+                            "Payment process has been cancelled.",
+                            "success"
+                        );
+                        window.location.href = this.returnUrl;
+                    } catch (error) {
+                        this.$swal.fire(
+                            "Error",
+                            "Failed to cancel transaction: " + (error.response?.data?.message || error.message),
+                            "error"
+                        );
+                        window.location.href = this.returnUrl;
+                    }
+                }
+            });
         },
+
+        beforeDestroy() {
+            this.stopPolling();
+            if (this.countdownInterval) {
+                clearInterval(this.countdownInterval);
+            }
+        }
     }
 };
   </script>

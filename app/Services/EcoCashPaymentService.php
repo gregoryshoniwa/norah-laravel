@@ -36,7 +36,7 @@ class EcoCashPaymentService
             "referenceCode" => $reference, // Generate a random reference code
             "tranType" => "MER",
             "endUserId" => $request['phoneNumber'], // Map phoneNumber from the frontend request
-            "remarks" => "test remarks",
+            "remarks" => "Norah Payment",
             "transactionOperationStatus" => "Charged",
             "paymentAmount" => [
                 "charginginformation" => [

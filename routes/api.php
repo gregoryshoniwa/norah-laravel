@@ -68,8 +68,22 @@ Route::middleware([JwtMiddleware::class])->group(function () {
 Route::middleware([JwtMiddleware::class])->group(function () {
     Route::post('/transaction/m/generate', [TransactionController::class, 'generateMerchantTransactionToken']); // Generate merchant transaction token
     Route::post('/transaction/u/generate', [TransactionController::class, 'generateUserTransactionToken']); // Generate transaction token
+
+    // Transaction listing routes
+    Route::get('/transactions/user', [TransactionController::class, 'getUserTransactions']); // Get authenticated user's transactions
+    Route::get('/transactions/merchant/{merchant_id}', [TransactionController::class, 'getMerchantTransactions']); // Get specific merchant's transactions
+    Route::get('/transactions/merchant-charges/{merchant_id}', [TransactionController::class, 'getMerchantCharges']); // Get merchant's charges
+    Route::get('/transactions/all', [TransactionController::class, 'getAllTransactions']); // Get all transactions (admin only)
+
+    // Dashboard routes
+    Route::get('/dashboard/stats', [TransactionController::class, 'getDashboardStats']); // Get dashboard statistics
+    Route::get('/dashboard/recent-transactions', [TransactionController::class, 'getRecentTransactions']); // Get recent transactions with search and pagination
 });
 Route::post('/transactions/confirmation', [TransactionController::class, 'confirmTransaction']);
+Route::post('/transactions/process', [TransactionController::class, 'processTransaction']);
+Route::post('/transactions/cancel', [TransactionController::class, 'cancelTransaction']);
+Route::post('/transactions/status', [TransactionController::class, 'checkTransactionStatus']);
+
 
 Route::post('/merchant-sign-in', [AuthController::class, 'merchantSignIn']);
 

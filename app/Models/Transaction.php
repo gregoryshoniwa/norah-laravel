@@ -41,6 +41,7 @@ class Transaction extends Model
         'application_id',
         'transaction_status',
         'reference_code',
+        'parent_transaction_id',
         'deleted',
     ];
 

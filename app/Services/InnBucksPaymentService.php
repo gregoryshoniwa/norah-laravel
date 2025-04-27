@@ -40,7 +40,8 @@ class InnBucksPaymentService
     {
         // Convert the amount to cents (integer)
         if (isset($request['total'])) {
-            $request['total'] = (int) round($request['amount'] * 100);
+            $request['total'] = (int) round($request['total'] * 100);
+            $request['amount'] = $request['total'];
         }
         $request['reference'] = Str::uuid()->toString();
 
