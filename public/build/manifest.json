@@ -8,7 +8,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/app.css": {
-    "file": "assets/app-B85_08X2.css",
+    "file": "assets/app-CTz7108W.css",
     "src": "resources/css/app.css",
     "isEntry": true
   },
@@ -53,13 +53,18 @@
     "src": "resources/fonts/remixicon.woff2"
   },
   "resources/js/app.js": {
-    "file": "assets/app-CcUkH9NH.js",
+    "file": "assets/app-CCwCdeBE.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
+    "dynamicImports": [
+      "resources/js/components/pages/DashboardHome.vue",
+      "resources/js/components/pages/Settings.vue",
+      "resources/js/components/pages/Transactions.vue"
+    ],
     "css": [
-      "assets/app-Ce47yYTZ.css",
-      "assets/app-B85_08X2.css"
+      "assets/app-9dkV_UmQ.css",
+      "assets/app-CTz7108W.css"
     ],
     "assets": [
       "assets/bootstrap-icons-BtvjY1KL.woff2",
@@ -74,6 +79,45 @@
       "assets/remixicon-ChM2DbYV.woff",
       "assets/remixicon-t1-W4cIE.ttf",
       "assets/remixicon-bgXgLUrR.svg"
+    ]
+  },
+  "resources/js/components/pages/DashboardHome.vue": {
+    "file": "assets/DashboardHome-DaK4YcYt.js",
+    "name": "DashboardHome",
+    "src": "resources/js/components/pages/DashboardHome.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/DashboardHome-BBpex7vp.css",
+      "assets/app-CTz7108W.css"
+    ]
+  },
+  "resources/js/components/pages/Settings.vue": {
+    "file": "assets/Settings-BGKhILtp.js",
+    "name": "Settings",
+    "src": "resources/js/components/pages/Settings.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Settings-DI6C7TI8.css",
+      "assets/app-CTz7108W.css"
+    ]
+  },
+  "resources/js/components/pages/Transactions.vue": {
+    "file": "assets/Transactions-9fHGQ87e.js",
+    "name": "Transactions",
+    "src": "resources/js/components/pages/Transactions.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Transactions-B_lzAtOh.css",
+      "assets/app-CTz7108W.css"
     ]
   }
 }
