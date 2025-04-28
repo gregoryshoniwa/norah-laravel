@@ -1,6 +1,36 @@
 <!-- This will contain the current dashboard content -->
 <template>
   <div class="dashboard-content">
+    <!-- Top Bar -->
+    <div class="topbar">
+        <div class="search-box">
+          <i class="ri-search-line"></i>
+          <input
+            v-model="search"
+            @input="handleSearch"
+            type="text"
+            placeholder="Search transactions..."
+          />
+        </div>
+        <div class="user-info">
+          <div class="currency-selector">
+            <select v-model="selectedCurrency" @change="handleCurrencyChange">
+              <option v-for="currency in currencies" :key="currency" :value="currency">
+                {{ currency }}
+              </option>
+            </select>
+          </div>
+          <div class="notifications">
+            <i class="ri-notification-3-line"></i>
+            <span class="badge">3</span>
+          </div>
+          <div class="user">
+            <img :src="userInitials" alt="User" class="avatar"/>
+            <span class="user-name">{{ userName }}</span>
+          </div>
+        </div>
+      </div>
+
     <!-- Stats Cards -->
     <div class="stats-grid">
       <div class="stat-card">
@@ -115,9 +145,11 @@ import axios from 'axios';
 
 export default {
   name: 'DashboardHome',
-  inject: ['selectedCurrency', 'currencies'],
+
   data() {
     return {
+        userName: 'Loading...',
+        userInitials: '',
       stats: {
         totalVolume: 0,
         totalTransactions: 0,
@@ -129,10 +161,31 @@ export default {
       currentPage: 1,
       totalPages: 0,
       loading: false,
-      debounceTimer: null
+      debounceTimer: null,
+      currencies: ['USD', 'ZWG', 'ZAR', 'BWP', 'EUR', 'GBP'],
+      selectedCurrency: 'USD'
     };
   },
   mounted() {
+    // Get user data from localStorage
+    const userData = JSON.parse(localStorage.getItem('user'));
+    if (userData) {
+      this.userName = userData.fullName;
+      // Create initials from full name
+      this.userInitials = `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.fullName)}&background=010647&color=fff`;
+    }
+
+    // Set Authorization header for all requests
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      // If no token, redirect to login
+      this.$router.push('/login');
+      return;
+    }
+
+    // Load initial data after setting the token
     this.loadDashboardStats();
     this.loadTransactions();
   },
@@ -467,6 +520,108 @@ tr:hover td {
     opacity: 1;
   }
 }
+
+/* Topbar Styles */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  background: white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  width: 300px;
+}
+
+.search-box input {
+  border: none;
+  outline: none;
+  margin-left: 0.5rem;
+  width: 100%;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+/* Currency Selector Styles */
+.currency-selector {
+  position: relative;
+  min-width: 100px;
+}
+
+.currency-selector select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+  color: #010647;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  padding-right: 2rem;
+}
+
+.currency-selector::after {
+  content: '▼';
+  font-size: 0.8rem;
+  color: #010647;
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.currency-selector select:hover {
+  border-color: #010647;
+}
+
+.notifications {
+  position: relative;
+}
+
+.badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #ff4757;
+  color: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.user-name {
+  font-weight: 600;
+}
+
 
 /* Apply staggered animation to stat cards */
 .stat-card:nth-child(1) { animation-delay: 0.1s; }
