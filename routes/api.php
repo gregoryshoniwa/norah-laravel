@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ChargesController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TokenController;
 use App\Http\Middleware\JwtMiddleware;
@@ -59,9 +60,11 @@ Route::middleware([JwtMiddleware::class])->group(function () {
     Route::put('/admin/merchants/{merchantId}/activate', [AdminController::class, 'activateMerchant']); // Activate a merchant
 
     Route::get('/admin/users', [AdminController::class, 'getNonMerchantUsers']); // List all non-MERCHANT users
+    Route::put('/admin/users/{userId}', [AdminController::class, 'updateUser']); // Update a user
+    Route::delete('/admin/users/{userId}', [AdminController::class, 'deleteUser']); // Delete a user
 
     Route::get('/merchant/secret/{merchantId}', [AdminController::class, 'getMerchantSecret']); // Get merchant secret
-    Route::get('/user/secret/{userId}', [AdminController::class, 'getUserSecret']); // Get merchant secret
+    Route::get('/user/secret/{userId}', [AdminController::class, 'getUserSecret']); // Get user secret
 });
 
 //Transaction routes
@@ -74,10 +77,17 @@ Route::middleware([JwtMiddleware::class])->group(function () {
     Route::get('/transactions/merchant/{merchant_id}', [TransactionController::class, 'getMerchantTransactions']); // Get specific merchant's transactions
     Route::get('/transactions/merchant-charges/{merchant_id}', [TransactionController::class, 'getMerchantCharges']); // Get merchant's charges
     Route::get('/transactions/all', [TransactionController::class, 'getAllTransactions']); // Get all transactions (admin only)
+    Route::get('/transactions/details/{id}', [TransactionController::class, 'getTransactionDetails']); // Get transaction details
+    Route::post('/transactions/receipt', [TransactionController::class, 'generateReceipt']); // Generate transaction receipt
 
     // Dashboard routes
     Route::get('/dashboard/stats', [TransactionController::class, 'getDashboardStats']); // Get dashboard statistics
     Route::get('/dashboard/recent-transactions', [TransactionController::class, 'getRecentTransactions']); // Get recent transactions with search and pagination
+
+    // Settings routes
+    Route::get('/settings', [SettingsController::class, 'getSettings']); // Get user settings
+    Route::post('/settings', [SettingsController::class, 'saveSettings']); // Save user settings
+    Route::delete('/settings/reset', [SettingsController::class, 'resetSettings']); // Reset user settings to defaults
 });
 Route::post('/transactions/confirmation', [TransactionController::class, 'confirmTransaction']);
 Route::post('/transactions/process', [TransactionController::class, 'processTransaction']);

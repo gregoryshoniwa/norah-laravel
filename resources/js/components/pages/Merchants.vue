@@ -168,7 +168,79 @@ export default {
       }
     },
 
-    // ... other methods remain the same ...
+    editMerchant(merchant) {
+      this.editingMerchant = merchant;
+      this.merchantForm = {
+        merchant_name: merchant.merchant_name,
+        email: merchant.merchant_email,
+        company_name: merchant.company_name,
+        merchant_description: merchant.merchant_description || '',
+        return_url: merchant.return_url || '',
+        password: ''
+      };
+      this.showAddMerchantModal = true;
+    },
+
+    async getMerchantSecret(merchantId) {
+      try {
+        const response = await axios.get(`/api/v1/merchant/secret/${merchantId}`);
+
+        if (response.data && response.data.secret) {
+          this.$swal.fire({
+            title: 'Merchant Secret',
+            text: response.data.secret,
+            icon: 'info',
+            confirmButtonText: 'Copy',
+            showCancelButton: true,
+            cancelButtonText: 'Close'
+          }).then((result) => {
+            if (result.isConfirmed) {
+              navigator.clipboard.writeText(response.data.secret);
+              this.$swal.fire('Copied!', 'Secret copied to clipboard', 'success');
+            }
+          });
+        } else {
+          this.$swal.fire('Error!', 'Failed to retrieve merchant secret', 'error');
+        }
+      } catch (error) {
+        console.error('Error getting merchant secret:', error);
+        this.$swal.fire('Error!', 'Failed to retrieve merchant secret', 'error');
+      }
+    },
+
+    async toggleMerchantStatus(merchant) {
+      try {
+        const isActive = merchant.status;
+        const action = isActive ? 'inactivate' : 'activate';
+        const confirmResult = await this.$swal.fire({
+          title: `${isActive ? 'Deactivate' : 'Activate'} Merchant?`,
+          text: `Are you sure you want to ${isActive ? 'deactivate' : 'activate'} ${merchant.merchant_name}?`,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: isActive ? '#d33' : '#3085d6',
+          cancelButtonColor: '#6c757d',
+          confirmButtonText: `Yes, ${action} merchant`
+        });
+
+        if (confirmResult.isConfirmed) {
+          const response = await axios.put(`/api/v1/admin/merchants/${merchant.id}/${action}`);
+
+          if (response.data.success) {
+            this.$swal.fire(
+              'Success!',
+              `Merchant ${isActive ? 'deactivated' : 'activated'} successfully`,
+              'success'
+            );
+            this.loadMerchants(); // Reload the merchants list
+          } else {
+            this.$swal.fire('Error!', response.data.message || 'Operation failed', 'error');
+          }
+        }
+      } catch (error) {
+        console.error(`Error ${merchant.status ? 'deactivating' : 'activating'} merchant:`, error);
+        this.$swal.fire('Error!', error.response?.data?.message || 'Operation failed', 'error');
+      }
+    },
 
     closeModal() {
       this.showAddMerchantModal = false;

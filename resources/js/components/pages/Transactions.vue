@@ -236,6 +236,8 @@
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
   name: 'Transactions',
   data() {
@@ -248,40 +250,17 @@ export default {
         status: ''
       },
       stats: {
-        totalVolume: 150000,
-        completed: 245,
-        pending: 12,
-        failed: 8
+        totalVolume: 0,
+        completed: 0,
+        pending: 0,
+        failed: 0
       },
-      transactions: [
-        {
-          id: '12345',
-          created_at: '2025-04-27T10:30:00',
-          amount: 1500.00,
-          type: 'Payment',
-          status: 'COMPLETED',
-          customer_name: 'John Doe',
-          timeline: [
-            {
-              title: 'Transaction Initiated',
-              description: 'Customer started payment process',
-              timestamp: '2025-04-27T10:30:00',
-              icon: 'ri-play-circle-line'
-            },
-            {
-              title: 'Payment Processed',
-              description: 'Payment processed successfully',
-              timestamp: '2025-04-27T10:31:00',
-              icon: 'ri-check-line'
-            }
-          ]
-        }
-        // Add more mock transactions as needed
-      ],
+      transactions: [],
       selectedTransaction: null,
       currentPage: 1,
       itemsPerPage: 10,
-      totalItems: 100
+      totalItems: 0,
+      currency: 'USD'
     }
   },
   computed: {
@@ -310,7 +289,7 @@ export default {
     formatAmount(amount) {
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: 'USD'
+        currency: this.currency
       }).format(amount);
     },
     formatDate(date) {
@@ -323,28 +302,233 @@ export default {
     async loadTransactions() {
       this.loading = true;
       try {
-        // API call would go here
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
-        this.loading = false;
+        // Get transactions from API
+        const response = await axios.get('/api/v1/transactions/all', {
+          params: {
+            search: this.search,
+            page: this.currentPage,
+            per_page: this.itemsPerPage,
+            status: this.filters.status,
+            start_date: this.filters.startDate,
+            end_date: this.filters.endDate,
+            currency: this.currency
+          }
+        });
+
+        if (response.data.success) {
+          this.transactions = response.data.data.data;
+          this.currentPage = response.data.data.current_page;
+          this.totalItems = response.data.data.total;
+
+          // Load transaction stats
+          await this.loadTransactionStats();
+        }
       } catch (error) {
+        console.error('Error loading transactions:', error);
         this.$swal.fire('Error!', 'Failed to load transactions', 'error');
+      } finally {
         this.loading = false;
+      }
+    },
+
+    async loadTransactionStats() {
+      try {
+        const response = await axios.get('/api/v1/dashboard/stats', {
+          params: {
+            currency: this.currency
+          }
+        });
+
+        if (response.data.success) {
+          this.stats.totalVolume = response.data.data.totalVolume;
+
+          // Count transactions by status
+          const statusResponse = await axios.get('/api/v1/transactions/all', {
+            params: {
+              count_by_status: true,
+              currency: this.currency
+            }
+          });
+
+          if (statusResponse.data.success) {
+            const statusCounts = statusResponse.data.data;
+            this.stats.completed = statusCounts.COMPLETED || 0;
+            this.stats.pending = statusCounts.PENDING || 0;
+            this.stats.failed = statusCounts.FAILED || 0;
+          }
+        }
+      } catch (error) {
+        console.error('Error loading transaction stats:', error);
       }
     },
     changePage(page) {
       this.currentPage = page;
       this.loadTransactions();
     },
-    viewDetails(transaction) {
-      this.selectedTransaction = transaction;
+    async viewDetails(transaction) {
+      try {
+        // Fetch detailed transaction information
+        const response = await axios.get(`/api/v1/transactions/details/${transaction.id}`);
+
+        if (response.data.success) {
+          const transactionDetails = response.data.data;
+
+          // Generate timeline events based on transaction data
+          const timeline = this.generateTimeline(transactionDetails);
+
+          // Set the selected transaction with timeline
+          this.selectedTransaction = {
+            ...transactionDetails,
+            timeline: timeline,
+            customer_name: transactionDetails.user_name || 'N/A'
+          };
+        } else {
+          this.$swal.fire('Error!', 'Failed to load transaction details', 'error');
+        }
+      } catch (error) {
+        console.error('Error loading transaction details:', error);
+
+        // Fallback to basic details if API fails
+        this.selectedTransaction = {
+          ...transaction,
+          timeline: this.generateTimeline(transaction),
+          customer_name: transaction.user_name || 'N/A'
+        };
+      }
     },
+
+    generateTimeline(transaction) {
+      const timeline = [];
+
+      // Add transaction creation event
+      timeline.push({
+        title: 'Transaction Initiated',
+        description: `${transaction.type} transaction started`,
+        timestamp: transaction.created_at,
+        icon: 'ri-play-circle-line'
+      });
+
+      // Add status update events based on transaction status
+      if (transaction.status === 'COMPLETED') {
+        timeline.push({
+          title: 'Transaction Completed',
+          description: 'Payment processed successfully',
+          timestamp: transaction.updated_at,
+          icon: 'ri-check-line'
+        });
+      } else if (transaction.status === 'FAILED') {
+        timeline.push({
+          title: 'Transaction Failed',
+          description: transaction.error_message || 'Payment processing failed',
+          timestamp: transaction.updated_at,
+          icon: 'ri-close-circle-line'
+        });
+      } else if (transaction.status === 'PENDING') {
+        timeline.push({
+          title: 'Transaction Pending',
+          description: 'Payment is being processed',
+          timestamp: transaction.updated_at,
+          icon: 'ri-time-line'
+        });
+      }
+
+      return timeline;
+    },
+
     downloadReceipt(transaction) {
-      // Implementation for downloading receipt
-      this.$swal.fire('Success!', 'Receipt downloaded successfully', 'success');
+      try {
+        // Create receipt data
+        const receiptData = {
+          transaction_id: transaction.id,
+          date: this.formatDate(transaction.created_at),
+          amount: this.formatAmount(transaction.amount),
+          status: transaction.status,
+          type: transaction.type,
+          customer: transaction.user_name || 'N/A',
+          reference: transaction.reference || 'N/A'
+        };
+
+        // Generate PDF receipt
+        axios.post('/api/v1/transactions/receipt', receiptData, { responseType: 'blob' })
+          .then(response => {
+            // Create blob link to download
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `receipt-${transaction.id}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            this.$swal.fire('Success!', 'Receipt downloaded successfully', 'success');
+          })
+          .catch(error => {
+            console.error('Error downloading receipt:', error);
+            this.$swal.fire('Error!', 'Failed to download receipt', 'error');
+          });
+      } catch (error) {
+        console.error('Error generating receipt:', error);
+        this.$swal.fire('Error!', 'Failed to generate receipt', 'error');
+      }
     },
     exportTransactions() {
-      // Implementation for exporting transactions
-      this.$swal.fire('Success!', 'Transactions exported successfully', 'success');
+      try {
+        // Show loading message
+        this.$swal.fire({
+          title: 'Exporting...',
+          text: 'Please wait while we generate your export file',
+          allowOutsideClick: false,
+          didOpen: () => {
+            this.$swal.showLoading();
+          }
+        });
+
+        // Get export parameters
+        const params = {
+          format: 'csv', // or 'xlsx'
+          status: this.filters.status,
+          start_date: this.filters.startDate,
+          end_date: this.filters.endDate,
+          currency: this.currency
+        };
+
+        // Request export file
+        axios.get('/api/v1/transactions/export', {
+          params: params,
+          responseType: 'blob'
+        })
+        .then(response => {
+          // Create blob link to download
+          const url = window.URL.createObjectURL(new Blob([response.data]));
+          const link = document.createElement('a');
+          link.href = url;
+
+          // Get filename from response headers or use default
+          const contentDisposition = response.headers['content-disposition'];
+          let filename = 'transactions-export.csv';
+
+          if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+            if (filenameMatch.length === 2) {
+              filename = filenameMatch[1];
+            }
+          }
+
+          link.setAttribute('download', filename);
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+
+          this.$swal.fire('Success!', 'Transactions exported successfully', 'success');
+        })
+        .catch(error => {
+          console.error('Error exporting transactions:', error);
+          this.$swal.fire('Error!', 'Failed to export transactions', 'error');
+        });
+      } catch (error) {
+        console.error('Error initiating export:', error);
+        this.$swal.fire('Error!', 'Failed to initiate export', 'error');
+      }
     }
   },
   mounted() {
