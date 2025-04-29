@@ -8,7 +8,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/app.css": {
-    "file": "assets/app-HDtHh9OY.css",
+    "file": "assets/app-Ct8-bMwH.css",
     "src": "resources/css/app.css",
     "isEntry": true
   },
@@ -53,7 +53,7 @@
     "src": "resources/fonts/remixicon.woff2"
   },
   "resources/js/app.js": {
-    "file": "assets/app-DkzmkAwk.js",
+    "file": "assets/app-BhbFmzb5.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -63,8 +63,8 @@
       "resources/js/components/pages/Transactions.vue"
     ],
     "css": [
-      "assets/app-9dkV_UmQ.css",
-      "assets/app-HDtHh9OY.css"
+      "assets/app-s0Ms5QtG.css",
+      "assets/app-Ct8-bMwH.css"
     ],
     "assets": [
       "assets/bootstrap-icons-BtvjY1KL.woff2",
@@ -82,7 +82,7 @@
     ]
   },
   "resources/js/components/pages/DashboardHome.vue": {
-    "file": "assets/DashboardHome-DZegwMqi.js",
+    "file": "assets/DashboardHome-CXraO2nI.js",
     "name": "DashboardHome",
     "src": "resources/js/components/pages/DashboardHome.vue",
     "isDynamicEntry": true,
@@ -91,11 +91,11 @@
     ],
     "css": [
       "assets/DashboardHome-BBpex7vp.css",
-      "assets/app-HDtHh9OY.css"
+      "assets/app-Ct8-bMwH.css"
     ]
   },
   "resources/js/components/pages/Settings.vue": {
-    "file": "assets/Settings-DbJQ3ZEl.js",
+    "file": "assets/Settings-8xyMpkhW.js",
     "name": "Settings",
     "src": "resources/js/components/pages/Settings.vue",
     "isDynamicEntry": true,
@@ -103,12 +103,12 @@
       "resources/js/app.js"
     ],
     "css": [
-      "assets/Settings-DI6C7TI8.css",
-      "assets/app-HDtHh9OY.css"
+      "assets/Settings-DF9kVGVR.css",
+      "assets/app-Ct8-bMwH.css"
     ]
   },
   "resources/js/components/pages/Transactions.vue": {
-    "file": "assets/Transactions-BcRwWCjb.js",
+    "file": "assets/Transactions-B61GkVYf.js",
     "name": "Transactions",
     "src": "resources/js/components/pages/Transactions.vue",
     "isDynamicEntry": true,
@@ -116,8 +116,8 @@
       "resources/js/app.js"
     ],
     "css": [
-      "assets/Transactions-B_lzAtOh.css",
-      "assets/app-HDtHh9OY.css"
+      "assets/Transactions-Su4mbCgn.css",
+      "assets/app-Ct8-bMwH.css"
     ]
   }
 }
