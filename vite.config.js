@@ -19,5 +19,13 @@ export default defineConfig({
         }),
         tailwindcss(),
     ],
-
+    server: {
+        host: '0.0.0.0',
+        hmr: {
+            host: 'npg.co.zw',
+        },
+        cors: {
+            origin: ['https://dev.npg.co.zw'],
+        },
+    },
 });
