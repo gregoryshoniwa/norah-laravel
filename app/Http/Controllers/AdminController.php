@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
@@ -293,23 +294,115 @@ class AdminController extends Controller
     }
 
     public function getNonMerchantUsers()
-{
-    // Ensure only ADMIN users can access this endpoint
-    $authenticatedUser = JWTAuth::user();
-    if ($authenticatedUser->role !== 'ADMIN') {
-        return response()->json(['message' => 'Unauthorized. Only ADMIN users can view non-merchant users.'], 403);
+    {
+        // Ensure only ADMIN users can access this endpoint
+        $authenticatedUser = JWTAuth::user();
+        if ($authenticatedUser->role !== 'ADMIN') {
+            return response()->json(['message' => 'Unauthorized. Only ADMIN users can view non-merchant users.'], 403);
+        }
+
+        // Retrieve all non-MERCHANT users in the authenticated user's company
+        $users = User::where('company_name', $authenticatedUser->company_name)
+            ->where('role', '!=', 'MERCHANT')
+            ->get();
+
+        if ($users->isEmpty()) {
+            return response()->json(['message' => 'No non-MERCHANT users found for your company.'], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $users
+        ], 200);
     }
 
-    // Retrieve all non-MERCHANT users in the authenticated user's company
-    $users = User::where('company_name', $authenticatedUser->company_name)
-        ->where('role', '!=', 'MERCHANT')
-        ->get();
+    public function updateUser(Request $request, $userId)
+    {
+        // Ensure only ADMIN users can access this endpoint
+        $authenticatedUser = JWTAuth::user();
+        if ($authenticatedUser->role !== 'ADMIN') {
+            return response()->json(['message' => 'Unauthorized. Only ADMIN users can update users.'], 403);
+        }
 
-    if ($users->isEmpty()) {
-        return response()->json(['message' => 'No non-MERCHANT users found for your company.'], 404);
+        // Find the user
+        $user = User::find($userId);
+        if (!$user) {
+            return response()->json(['message' => 'User not found.'], 404);
+        }
+
+        // Ensure the user belongs to the same company as the authenticated ADMIN user
+        if ($user->company_name !== $authenticatedUser->company_name) {
+            return response()->json(['message' => 'Unauthorized. The specified user does not belong to your company.'], 403);
+        }
+
+        // Validate the request
+        $validator = Validator::make($request->all(), [
+            'fullName' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
+            'role' => 'required|string|in:ADMIN,USER',
+            'status' => 'required|boolean',
+            'notes' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // Update the user
+        $nameParts = explode(' ', $request->fullName, 2);
+        $firstName = $nameParts[0];
+        $lastName = isset($nameParts[1]) ? $nameParts[1] : '';
+
+        $user->update([
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'email' => $request->email,
+            'role' => $request->role,
+            'is_activated' => $request->status,
+            'description' => $request->notes,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User updated successfully',
+            'data' => $user
+        ], 200);
     }
 
-    return response()->json($users, 200);
-}
+    public function deleteUser($userId)
+    {
+        // Ensure only ADMIN users can access this endpoint
+        $authenticatedUser = JWTAuth::user();
+        if ($authenticatedUser->role !== 'ADMIN') {
+            return response()->json(['message' => 'Unauthorized. Only ADMIN users can delete users.'], 403);
+        }
+
+        // Find the user
+        $user = User::find($userId);
+        if (!$user) {
+            return response()->json(['message' => 'User not found.'], 404);
+        }
+
+        // Ensure the user belongs to the same company as the authenticated ADMIN user
+        if ($user->company_name !== $authenticatedUser->company_name) {
+            return response()->json(['message' => 'Unauthorized. The specified user does not belong to your company.'], 403);
+        }
+
+        // Prevent deleting yourself
+        if ($user->id === $authenticatedUser->id) {
+            return response()->json(['message' => 'You cannot delete your own account.'], 400);
+        }
+
+        // Delete the user
+        $user->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User deleted successfully'
+        ], 200);
+    }
 
 }

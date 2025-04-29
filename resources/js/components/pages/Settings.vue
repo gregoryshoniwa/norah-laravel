@@ -102,11 +102,23 @@
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
   name: 'Settings',
   data() {
     return {
+      loading: false,
       settings: {
+        defaultCurrency: 'USD',
+        emailNotifications: true,
+        smsNotifications: false,
+        twoFactorAuth: false,
+        sessionTimeout: 30,
+        apiRateLimit: 100,
+        enableApiLogs: true
+      },
+      defaultSettings: {
         defaultCurrency: 'USD',
         emailNotifications: true,
         smsNotifications: false,
@@ -117,21 +129,75 @@ export default {
       }
     }
   },
+  mounted() {
+    this.loadSettings();
+  },
   methods: {
-    async saveSettings() {
+    async loadSettings() {
+      this.loading = true;
       try {
-        // API call would go here
-        this.$swal.fire({
-          title: 'Success!',
-          text: 'Settings saved successfully',
-          icon: 'success',
-          timer: 2000,
-          showConfirmButton: false
-        });
+        // Try to load settings from localStorage first
+        const savedSettings = localStorage.getItem('appSettings');
+        if (savedSettings) {
+          this.settings = JSON.parse(savedSettings);
+          this.loading = false;
+          return;
+        }
+
+        // If no localStorage settings, try to load from API
+        const response = await axios.get('/api/v1/settings');
+        if (response.data.success) {
+          this.settings = response.data.data;
+          // Save to localStorage for future use
+          localStorage.setItem('appSettings', JSON.stringify(this.settings));
+        }
       } catch (error) {
-        this.$swal.fire('Error!', 'Failed to save settings', 'error');
+        console.error('Error loading settings:', error);
+        // If API fails, use default settings
+        this.settings = { ...this.defaultSettings };
+      } finally {
+        this.loading = false;
       }
     },
+
+    async saveSettings() {
+      try {
+        this.loading = true;
+
+        // Save to localStorage
+        localStorage.setItem('appSettings', JSON.stringify(this.settings));
+
+        // Try to save to API
+        try {
+          const response = await axios.post('/api/v1/settings', this.settings);
+          if (response.data.success) {
+            this.$swal.fire({
+              title: 'Success!',
+              text: 'Settings saved successfully',
+              icon: 'success',
+              timer: 2000,
+              showConfirmButton: false
+            });
+          }
+        } catch (apiError) {
+          console.error('API error when saving settings:', apiError);
+          // Still show success if localStorage save worked
+          this.$swal.fire({
+            title: 'Settings Saved Locally',
+            text: 'Settings saved to your browser, but could not be saved to the server',
+            icon: 'info',
+            timer: 3000,
+            showConfirmButton: false
+          });
+        }
+      } catch (error) {
+        console.error('Error saving settings:', error);
+        this.$swal.fire('Error!', 'Failed to save settings', 'error');
+      } finally {
+        this.loading = false;
+      }
+    },
+
     resetSettings() {
       this.$swal.fire({
         title: 'Are you sure?',
@@ -143,7 +209,19 @@ export default {
         confirmButtonText: 'Yes, reset settings'
       }).then((result) => {
         if (result.isConfirmed) {
-          // Reset logic would go here
+          // Reset to default values
+          this.settings = { ...this.defaultSettings };
+
+          // Clear localStorage
+          localStorage.removeItem('appSettings');
+
+          // Try to reset on API
+          try {
+            axios.delete('/api/v1/settings/reset');
+          } catch (error) {
+            console.error('Error resetting settings on API:', error);
+          }
+
           this.$swal.fire('Reset!', 'Settings have been reset to defaults', 'success');
         }
       });

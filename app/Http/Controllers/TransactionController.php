@@ -15,6 +15,7 @@ use App\Models\Transaction;
 use Illuminate\Support\Str;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class TransactionController extends Controller
 {
@@ -707,6 +708,221 @@ class TransactionController extends Controller
                 'message' => 'Error fetching recent transactions'
             ], 500);
         }
+    }
+
+    public function getAllTransactions(Request $request)
+    {
+        $user = JWTAuth::user();
+
+        // Ensure only ADMIN users can access this endpoint
+        if ($user->role !== 'ADMIN' && $user->role !== 'SUPER') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Only ADMIN or SUPER users can view all transactions.'
+            ], 403);
+        }
+
+        $search = $request->get('search', '');
+        $perPage = $request->get('per_page', 10);
+        $status = $request->get('status', '');
+        $startDate = $request->get('start_date', '');
+        $endDate = $request->get('end_date', '');
+        $currency = $request->get('currency', '');
+        $countByStatus = $request->get('count_by_status', false);
+
+        try {
+            // If we just need to count transactions by status
+            if ($countByStatus) {
+                $counts = Transaction::whereIn('type', ['PAYMENT'])
+                    ->select('status', DB::raw('count(*) as count'))
+                    ->groupBy('status')
+                    ->pluck('count', 'status')
+                    ->toArray();
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $counts
+                ]);
+            }
+
+            // Build the query with filters
+            $query = Transaction::whereIn('type', ['PAYMENT']);
+
+            // Apply search filter
+            if (!empty($search)) {
+                $search = strtolower($search);
+                $query->where(function($q) use ($search) {
+                    $q->where('id', 'LIKE', "%{$search}%")
+                      ->orWhere('user_name', 'LIKE', "%{$search}%")
+                      ->orWhereRaw('LOWER(CAST(amount AS CHAR)) LIKE ?', ["%{$search}%"])
+                      ->orWhere('status', 'LIKE', "%{$search}%")
+                      ->orWhere('currency', 'LIKE', "%{$search}%");
+                });
+            }
+
+            // Apply status filter
+            if (!empty($status)) {
+                $query->where('status', $status);
+            }
+
+            // Apply date range filter
+            if (!empty($startDate)) {
+                $query->whereDate('created_at', '>=', $startDate);
+            }
+
+            if (!empty($endDate)) {
+                $query->whereDate('created_at', '<=', $endDate);
+            }
+
+            // Apply currency filter
+            if (!empty($currency)) {
+                $query->where('currency', $currency);
+            }
+
+            // Order by created_at desc
+            $query->orderBy('created_at', 'desc');
+
+            // Return paginated results
+            return response()->json([
+                'success' => true,
+                'data' => $query->paginate($perPage)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching transactions: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function generateReceipt(Request $request)
+    {
+        try {
+            // Validate the request
+            $validator = Validator::make($request->all(), [
+                'transaction_id' => 'required',
+                'date' => 'required',
+                'amount' => 'required',
+                'status' => 'required',
+                'type' => 'required',
+                'customer' => 'required',
+                'reference' => 'required'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $data = $request->all();
+
+            // Get currency symbol
+            $currencySymbol = $this->getCurrencySymbol($data['currency'] ?? 'USD');
+
+            // Format amount with currency
+            $amount = $data['amount'];
+            if (is_numeric($amount)) {
+                $data['amount'] = $currencySymbol . ' ' . number_format($amount, 2);
+            }
+
+            // If charge exists, format it and calculate total
+            if (isset($data['charge']) && is_numeric($data['charge'])) {
+                $charge = $data['charge'];
+                $data['charge'] = $currencySymbol . ' ' . number_format($charge, 2);
+                $data['total_amount'] = $currencySymbol . ' ' . number_format($amount + $charge, 2);
+            }
+
+            // Generate PDF using DomPDF with standalone view in PDF middleware
+            $pdf = Pdf::loadView('pdf.receipt', $data)
+                ->setOptions([
+                    'isHtml5ParserEnabled' => true,
+                    'isRemoteEnabled' => true,
+                    'isFontSubsettingEnabled' => true,
+                    'defaultFont' => 'sans-serif'
+                ]);
+
+            // Set paper size and orientation
+            $pdf->setPaper('a4', 'portrait');
+
+            // Generate a filename
+            $filename = 'receipt_' . $data['transaction_id'] . '_' . date('YmdHis') . '.pdf';
+
+            // Set paper size and margins
+            $pdf->setPaper('a4');
+            $pdf->setOption('margin-top', 10);
+            $pdf->setOption('margin-right', 10);
+            $pdf->setOption('margin-bottom', 10);
+            $pdf->setOption('margin-left', 10);
+
+            // Return the PDF as a download
+            return $pdf->stream($filename);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error generating receipt: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getTransactionDetails($id)
+    {
+        $user = JWTAuth::user();
+
+        try {
+            // Find the transaction
+            $transaction = Transaction::findOrFail($id);
+
+            // Check if user has permission to view this transaction
+            if ($user->role === 'ADMIN' || $user->role === 'SUPER') {
+                // Admin can view all transactions
+            } elseif ($user->role === 'MERCHANT') {
+                // Merchant can only view their own transactions
+                if ($transaction->user_id !== $user->id) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Unauthorized access. You can only view your own transactions.'
+                    ], 403);
+                }
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access'
+                ], 403);
+            }
+
+            // Get related transactions (charges)
+            $relatedTransactions = Transaction::where('parent_transaction_id', $transaction->id)->get();
+
+            // Add related transactions to the response
+            $transaction->related_transactions = $relatedTransactions;
+
+            return response()->json([
+                'success' => true,
+                'data' => $transaction
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching transaction details: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    protected function getCurrencySymbol($currency)
+    {
+        $symbols = [
+            'USD' => '$',
+            'EUR' => '€',
+            'GBP' => '£',
+            'ZWL' => 'ZWL',
+            'ZAR' => 'R'
+        ];
+
+        return $symbols[$currency] ?? $currency;
     }
 
     public function generateMerchantTransactionToken(Request $request)

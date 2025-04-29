@@ -50,9 +50,9 @@ class EcoCashPaymentService
                     "onBeHalfOf" => "Norah pgw"
                 ]
             ],
-            "merchantCode" => "001535",
-            "merchantPin" => "4827",
-            "merchantNumber" => "788732685",
+            "merchantCode" => env('ECOCASH_MERCHANT_CODE'),
+            "merchantPin" => env('ECOCASH_MERCHANT_PIN'),
+            "merchantNumber" => env('ECOCASH_MERCHANT_NUMBER'),
             "currencyCode" =>  $request['currency'], // Map currency from the frontend request
             "countryCode" => "ZW",
             "terminalID" => "NORAH1",
