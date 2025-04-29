@@ -15,6 +15,7 @@ use App\Models\Transaction;
 use Illuminate\Support\Str;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class TransactionController extends Controller
 {
@@ -816,13 +817,49 @@ class TransactionController extends Controller
                 ], 422);
             }
 
-            // In a real implementation, you would generate a PDF receipt here
-            // For now, we'll just return a JSON response with the receipt data
-            return response()->json([
-                'success' => true,
-                'data' => $request->all(),
-                'message' => 'Receipt generated successfully'
-            ]);
+            $data = $request->all();
+
+            // Get currency symbol
+            $currencySymbol = $this->getCurrencySymbol($data['currency'] ?? 'USD');
+
+            // Format amount with currency
+            $amount = $data['amount'];
+            if (is_numeric($amount)) {
+                $data['amount'] = $currencySymbol . ' ' . number_format($amount, 2);
+            }
+
+            // If charge exists, format it and calculate total
+            if (isset($data['charge']) && is_numeric($data['charge'])) {
+                $charge = $data['charge'];
+                $data['charge'] = $currencySymbol . ' ' . number_format($charge, 2);
+                $data['total_amount'] = $currencySymbol . ' ' . number_format($amount + $charge, 2);
+            }
+
+            // Generate PDF using DomPDF with standalone view in PDF middleware
+            $pdf = Pdf::loadView('pdf.receipt', $data)
+                ->setOptions([
+                    'isHtml5ParserEnabled' => true,
+                    'isRemoteEnabled' => true,
+                    'isFontSubsettingEnabled' => true,
+                    'defaultFont' => 'sans-serif'
+                ]);
+
+            // Set paper size and orientation
+            $pdf->setPaper('a4', 'portrait');
+
+            // Generate a filename
+            $filename = 'receipt_' . $data['transaction_id'] . '_' . date('YmdHis') . '.pdf';
+
+            // Set paper size and margins
+            $pdf->setPaper('a4');
+            $pdf->setOption('margin-top', 10);
+            $pdf->setOption('margin-right', 10);
+            $pdf->setOption('margin-bottom', 10);
+            $pdf->setOption('margin-left', 10);
+
+            // Return the PDF as a download
+            return $pdf->stream($filename);
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -873,6 +910,19 @@ class TransactionController extends Controller
                 'message' => 'Error fetching transaction details: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    protected function getCurrencySymbol($currency)
+    {
+        $symbols = [
+            'USD' => '$',
+            'EUR' => '€',
+            'GBP' => '£',
+            'ZWL' => 'ZWL',
+            'ZAR' => 'R'
+        ];
+
+        return $symbols[$currency] ?? $currency;
     }
 
     public function generateMerchantTransactionToken(Request $request)

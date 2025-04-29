@@ -78,7 +78,9 @@ Route::middleware([JwtMiddleware::class])->group(function () {
     Route::get('/transactions/merchant-charges/{merchant_id}', [TransactionController::class, 'getMerchantCharges']); // Get merchant's charges
     Route::get('/transactions/all', [TransactionController::class, 'getAllTransactions']); // Get all transactions (admin only)
     Route::get('/transactions/details/{id}', [TransactionController::class, 'getTransactionDetails']); // Get transaction details
-    Route::post('/transactions/receipt', [TransactionController::class, 'generateReceipt']); // Generate transaction receipt
+    Route::post('/transactions/receipt', [TransactionController::class, 'generateReceipt'])
+        ->middleware(['pdf.view'])
+        ->withoutMiddleware(['web']); // Generate transaction receipt with PDF middleware
 
     // Dashboard routes
     Route::get('/dashboard/stats', [TransactionController::class, 'getDashboardStats']); // Get dashboard statistics

@@ -120,10 +120,10 @@
                 </span>
               </td>
               <td class="actions">
-                <button class="btn-icon" @click="viewDetails(transaction)" title="View Details">
+                <button class="btn-icon mr-2" @click="viewDetails(transaction)" title="View Details">
                   <i class="ri-eye-line"></i>
                 </button>
-                <button class="btn-icon" @click="downloadReceipt(transaction)" title="Download Receipt">
+                <button class="btn-icon ml-2" @click="downloadReceipt(transaction)" title="Download Receipt">
                   <i class="ri-file-list-3-line"></i>
                 </button>
               </td>
@@ -958,6 +958,37 @@ tbody tr:hover {
 
 .loading-spinner i {
   animation: spin 1s linear infinite;
+}
+
+/* Action Buttons */
+.actions {
+  white-space: nowrap;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #f8f9fc;
+  border: 1px solid #e2e8f0;
+  color: #010647;
+  transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+  background: #e2e8f0;
+  transform: translateY(-2px);
+}
+
+.btn-icon i {
+  font-size: 1.25rem;
 }
 
 /* Responsive Design */
