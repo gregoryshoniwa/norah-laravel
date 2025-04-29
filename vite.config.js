@@ -19,15 +19,5 @@ export default defineConfig({
         }),
         tailwindcss(),
     ],
-    /**
-     * Optimization configuration
-     *
-     * We exclude 'dompdf' from Vite's dependency optimization because:
-     * 1. DomPDF is a PHP library used on the server-side
-     * 2. Vite shouldn't try to bundle or process it as JavaScript
-     * 3. This prevents errors during development and build
-     */
-    // optimizeDeps: {
-    //     exclude: ['dompdf']
-    // }
+
 });
