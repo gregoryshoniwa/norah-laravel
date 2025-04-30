@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Merchant;
 use Illuminate\Support\Facades\Http;
 use App\Models\User;
 
@@ -21,13 +22,28 @@ class EcoCashPaymentService
     public function createPaymentRequest(array $request)
     {
         $auth = base64_encode("{$this->username}:{$this->password}");
-        $reference = time();
+        $reference = "NPG_" . time();
 
         $user = User::where('email', $request['user'])->first();
-
-        if (!$user || !$user->web_service_url) {
-            throw new \Exception('User not found or web_service_url is missing.');
+         // Check if the user exists
+         if (!$user) {
+            throw new \Exception('User not found.');
         }
+
+        //if user is a merchant
+        if ($user->role == 'MERCHANT') {
+            $merchant = Merchant::where('user_id', $user->id)->first();
+                // Check if the user has a web service URL
+                if (!$merchant->web_service_url) {
+                    throw new \Exception('Configuration error : web_service_url is missing.');
+                }
+        }else{
+            // Check if the user has a web service URL
+            if (!$user->web_service_url) {
+                throw new \Exception('Configuration error : web_service_url is missing.');
+            }
+        }
+
 
         // Transform the incoming request to match the API's required format
         $apiRequest = [
@@ -36,7 +52,7 @@ class EcoCashPaymentService
             "referenceCode" => $reference, // Generate a random reference code
             "tranType" => "MER",
             "endUserId" => $request['phoneNumber'], // Map phoneNumber from the frontend request
-            "remarks" => "Norah Payment",
+            "remarks" => "Norah Payments",
             "transactionOperationStatus" => "Charged",
             "paymentAmount" => [
                 "charginginformation" => [

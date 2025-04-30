@@ -22,6 +22,7 @@ class TransactionController extends Controller
     protected $innbucksService;
     protected $ecocashService;
 
+
     public function __construct(InnBucksPaymentService $innbucksService, EcoCashPaymentService $ecocashService)
     {
         $this->innbucksService = $innbucksService;
@@ -133,7 +134,7 @@ class TransactionController extends Controller
 
             } elseif ($transaction->payment_method === 'ECOCASH') {
                 $inquiryResponse = $this->ecocashService->inquirePaymentRequest($transaction->pan, $transaction->reference);
-                $isFinal = $inquiryResponse['transactionOperationStatus'] === 'COMPLETE' ||
+                $isFinal = $inquiryResponse['transactionOperationStatus'] === 'COMPLETED' ||
                            $inquiryResponse['transactionOperationStatus'] === 'FAILED';
             }
 
@@ -174,14 +175,34 @@ class TransactionController extends Controller
         DB::beginTransaction();
 
         try {
-            // Update the original transaction
-            $originalTransaction->update([
-                'status' => 'COMPLETED',
-                'response_code' => '00',
+            // Create a new transaction with completed status
+            $newTransaction = Transaction::create([
                 'type' => 'PAYMENT',
+                'pan' => $originalTransaction->pan,
+                'expiry_date' => $originalTransaction->expiry_date,
+                'trace' => $originalTransaction->trace,
+                'reference' => $originalTransaction->reference,
+                'currency' => $originalTransaction->currency,
+                'amount' => number_format((float) $originalTransaction->amount + (float) $originalTransaction->charge, 2, '.', ''),
+                'charge' => $originalTransaction->charge,
+                'status' => 'COMPLETED',
+                'payment_method' => $originalTransaction->payment_method,
+                'numeric_amount' => $originalTransaction->numeric_amount,
+                'response_code' => '00',
+                'request' => $originalTransaction->request,
                 'response' => json_encode($paymentResponse),
+                'merchant_uid' => $originalTransaction->merchant_uid,
+                'user_name' => $originalTransaction->user_name,
+                'user_id' => $originalTransaction->user_id,
+                'user_type' => $originalTransaction->user_type,
                 'credit_reference' => $paymentResponse['ecocashReference'] ?? $paymentResponse['stan'] ?? null,
                 'debit_reference' => Str::uuid()->toString(),
+                'parent_transaction_id' => $originalTransaction->id
+            ]);
+
+            // Update the original transaction to mark it as processed
+            $originalTransaction->update([
+                'status' => 'PROCESSED'
             ]);
 
             // Get the user associated with the transaction
@@ -204,7 +225,7 @@ class TransactionController extends Controller
                 'returnUrl' => $user->return_url,
                 'responseMessage' => 'Transaction completed successfully.',
                 'message' => 'Transaction Paid successfully.',
-                'transaction' => $originalTransaction
+                'transaction' => $newTransaction
             ]);
 
         } catch (\Exception $e) {
@@ -219,6 +240,7 @@ class TransactionController extends Controller
 
     protected function createChargeRecords(Transaction $transaction, $user)
     {
+        bcscale(2);
         // System charge logic - always create for both user and merchant types
         $systemCharge = SystemCharge::active()
             ->where('user_email', $transaction->user_type === 'U' ? $user->email : $this->getParentUserEmail($user))
@@ -241,9 +263,9 @@ class TransactionController extends Controller
         Transaction::create([
             'type' => 'SYSTEM_CHARGE',
             'pan' => $transaction->pan,
-            'trace' => Str::uuid()->toString(),
+            'trace' => $transaction->trace,
             'currency' => $transaction->currency,
-            'amount' => $calculatedSystemCharge,
+            'amount' => bcdiv($calculatedSystemCharge, '1', 2),
             'status' => 'COMPLETED',
             'response_code' => '00',
             'payment_method' => $transaction->payment_method,
@@ -276,9 +298,9 @@ class TransactionController extends Controller
             Transaction::create([
                 'type' => 'MERCHANT_CHARGE',
                 'pan' => $transaction->pan,
-                'trace' => Str::uuid()->toString(),
+                'trace' => $transaction->trace,
                 'currency' => $transaction->currency,
-                'amount' => $calculatedMerchantCharge,
+                'amount' =>  bcdiv($calculatedMerchantCharge, '1', 2),
                 'status' => 'COMPLETED',
                 'response_code' => '00',
                 'payment_method' => $transaction->payment_method,
@@ -302,6 +324,8 @@ class TransactionController extends Controller
             return $amount * ($value / 100);
         }
         throw new \Exception('Invalid charge type.');
+
+
     }
 
     protected function getUserFromTransaction(Transaction $transaction)
