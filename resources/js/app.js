@@ -31,6 +31,7 @@ app.use(VueApexCharts);
 
 
 app.use(BootstrapVue3);
-app.use(AOS.init());
 
+// Initialize AOS after mounting
 app.mount('#app');
+AOS.init();

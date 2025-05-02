@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\Log;
 
 class TransactionController extends Controller
 {
@@ -214,6 +215,21 @@ class TransactionController extends Controller
             // Handle system and merchant charges as separate records
             $this->createChargeRecords($originalTransaction, $user);
 
+            // Send webhook notification if merchant has web service URL configured
+            if ($user->role === 'MERCHANT' && !empty($user->web_service_url)) {
+                $this->sendPostRequest($user->web_service_url, [
+                    'transaction' => $newTransaction->toArray(),
+                    'status' => 'COMPLETED',
+                    'timestamp' => now()->toIso8601String(),
+                    'trace' => $originalTransaction->trace,
+                    'amount' => $newTransaction->amount,
+                    'currency' => $newTransaction->currency,
+                    'payment_method' => $newTransaction->payment_method,
+                    'reference' => $newTransaction->reference,
+                    'merchant_uid' => $newTransaction->merchant_uid
+                ]);
+            }
+
             DB::commit();
 
             return response()->json([
@@ -227,6 +243,10 @@ class TransactionController extends Controller
                 'message' => 'Transaction Paid successfully.',
                 'transaction' => $newTransaction
             ]);
+
+            // send a post request to the merchant's web service URL
+            // $this->sendPostRequest($user->web_service_url, $newTransaction);
+
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -933,6 +953,49 @@ class TransactionController extends Controller
                 'success' => false,
                 'message' => 'Error fetching transaction details: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    protected function sendPostRequest($url, $data)
+    {
+        try {
+            $client = new \GuzzleHttp\Client([
+                'timeout' => 30,
+                'connect_timeout' => 30
+            ]);
+
+            $response = $client->post($url, [
+                'json' => $data,
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ]
+            ]);
+
+            $statusCode = $response->getStatusCode();
+            $responseBody = json_decode($response->getBody(), true);
+
+            Log::info('Merchant webhook notification sent', [
+                'url' => $url,
+                'status_code' => $statusCode,
+                'response' => $responseBody
+            ]);
+
+            return [
+                'success' => $statusCode >= 200 && $statusCode < 300,
+                'status_code' => $statusCode,
+                'response' => $responseBody
+            ];
+        } catch (\Exception $e) {
+            Log::error('Failed to send merchant webhook notification', [
+                'url' => $url,
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
         }
     }
 

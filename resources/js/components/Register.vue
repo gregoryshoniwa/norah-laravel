@@ -1,5 +1,5 @@
 <template>
-    <div class="Login-wrap ptb-100">
+    <div class="Login-wrap ptb-30">
       <loader v-if="isLoading" />
       <img src="assets/images/section-shape-2.png" alt="Image" class="section-shape-two" />
 
@@ -85,13 +85,57 @@
                           />
                         </div>
                       </div>
+                      <div class="col-lg-6">
+                        <div class="form-group">
+                          <input
+                            v-model="address"
+                            id="address"
+                            name="address"
+                            type="text"
+                            placeholder="Address"
+                          />
+                        </div>
+                      </div>
+                      <div class="col-lg-6">
+                        <div class="form-group">
+                          <input
+                            v-model="description"
+                            id="description"
+                            name="description"
+                            placeholder="Description"
+                            type="text"
+                          />
+                        </div>
+                      </div>
+                      <div class="col-lg-6">
+                        <div class="form-group">
+                          <input
+                            v-model="returnUrl"
+                            id="return_url"
+                            name="return_url"
+                            type="text"
+                            placeholder="Return URL"
+                          />
+                        </div>
+                      </div>
+                      <div class="col-lg-6">
+                        <div class="form-group">
+                          <input
+                            v-model="webServiceUrl"
+                            id="wsurl"
+                            name="wsurl"
+                            placeholder="Web Service URL"
+                            type="text"
+                          />
+                        </div>
+                      </div>
                       <div class="col-sm-12 col-12 mb-20">
                         <div class="checkbox style3">
                           <input v-model="terms" type="checkbox" id="test_1" />
                           <label for="test_1">
                             I Agree with the
                             <router-link class="link style1" to="/privacy-policy">Privacy Policies</router-link>
-                          </label>
+                        </label>
                         </div>
                       </div>
                       <div class="col-lg-12">
@@ -131,63 +175,80 @@
       password: "",
       confirmPassword: "",
       companyName: "",
+      returnUrl: "",
+      webServiceUrl: "",
+        address: "",
+        description: "",
       terms: null,
-      isLoading: false
+      isLoading: false,
+      urlFormat: /^https?:\/\/([\w-]+\.)+[\w-]+(\/[\w-./?%&=]*)?$/
     }),
     methods: {
       async register() {
         var mailformat = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
         if (this.firstName == "") {
           this.$swal.fire(
-            "Login error!",
+            "Registration error!",
             "Please enter a valid First Name!",
             "error"
           );
         } else if (this.lastName == "") {
           this.$swal.fire(
-            "Login error!",
+            "Registration error!",
             "Please enter a valid Last Name!",
             "error"
           );
         } else if (!mailformat.test(this.email)) {
           this.$swal.fire(
-            "Login error!",
+            "Registration error!",
             "Please enter a valid email address!",
             "error"
           );
         } else if (this.password == "") {
           this.$swal.fire(
-            "Login error!",
+            "Registration error!",
             "Please enter a valid password!",
             "error"
           );
         } else if (this.password.length < 10) {
           this.$swal.fire(
-            "Login error!",
+            "Registration error!",
             "Please enter a Stronger password!",
             "error"
           );
         } else if (this.confirmPassword == "") {
           this.$swal.fire(
-            "Login error!",
+            "Registration error!",
             "Please enter a valid confirm password!",
             "error"
           );
         } else if (this.confirmPassword != this.password) {
           this.$swal.fire(
-            "Login error!",
+            "Registration error!",
             "Your password does not match the confirm password!",
             "error"
           );
         } else if (this.companyName == "") {
           this.$swal.fire(
-            "Login error!",
+            "Registration error!",
             "Please enter a valid company name!",
             "error"
           );
-        } else if (this.terms == null) {
+        } else if (!this.urlFormat.test(this.returnUrl)) {
           this.$swal.fire(
-            "Login error!",
+            "Registration error!",
+            "Please enter a valid return URL starting with http:// or https://",
+            "error"
+          );
+        } else if (!this.urlFormat.test(this.webServiceUrl)) {
+          this.$swal.fire(
+            "Registration error!",
+            "Please enter a valid web service URL starting with http:// or https://",
+            "error"
+          );
+        }  else if (this.terms == null) {
+          this.$swal.fire(
+            "Registration error!",
             "Please confirm you agree with the terms & conditions!",
             "error"
           );
@@ -200,7 +261,11 @@
               lastName: this.lastName,
               email: this.email,
               password: this.password,
-              companyName: this.companyName
+              companyName: this.companyName,
+                returnUrl: this.returnUrl,
+                webServiceUrl: this.webServiceUrl,
+                address: this.address,
+                description: this.description,
             });
 
             this.isLoading = false;

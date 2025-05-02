@@ -53,7 +53,7 @@
     "src": "resources/fonts/remixicon.woff2"
   },
   "resources/js/app.js": {
-    "file": "assets/app-BBNJnC0I.js",
+    "file": "assets/app-B5fSuZ6Z.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -82,7 +82,7 @@
     ]
   },
   "resources/js/components/pages/DashboardHome.vue": {
-    "file": "assets/DashboardHome-Cga_Yv7t.js",
+    "file": "assets/DashboardHome-Bm6k1Az1.js",
     "name": "DashboardHome",
     "src": "resources/js/components/pages/DashboardHome.vue",
     "isDynamicEntry": true,
@@ -95,7 +95,7 @@
     ]
   },
   "resources/js/components/pages/Settings.vue": {
-    "file": "assets/Settings-B3WCWiN5.js",
+    "file": "assets/Settings-BA6-pf0i.js",
     "name": "Settings",
     "src": "resources/js/components/pages/Settings.vue",
     "isDynamicEntry": true,
@@ -108,7 +108,7 @@
     ]
   },
   "resources/js/components/pages/Transactions.vue": {
-    "file": "assets/Transactions-txp_ZyVh.js",
+    "file": "assets/Transactions-DV2Wv68J.js",
     "name": "Transactions",
     "src": "resources/js/components/pages/Transactions.vue",
     "isDynamicEntry": true,
