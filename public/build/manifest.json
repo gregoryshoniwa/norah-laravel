@@ -8,7 +8,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/app.css": {
-    "file": "assets/app-BB1yxztZ.css",
+    "file": "assets/app-Ct8-bMwH.css",
     "src": "resources/css/app.css",
     "isEntry": true
   },
@@ -64,7 +64,7 @@
     ],
     "css": [
       "assets/app-s0Ms5QtG.css",
-      "assets/app-BB1yxztZ.css"
+      "assets/app-Ct8-bMwH.css"
     ],
     "assets": [
       "assets/bootstrap-icons-BtvjY1KL.woff2",
@@ -91,7 +91,7 @@
     ],
     "css": [
       "assets/DashboardHome-BBpex7vp.css",
-      "assets/app-BB1yxztZ.css"
+      "assets/app-Ct8-bMwH.css"
     ]
   },
   "resources/js/components/pages/Settings.vue": {
@@ -104,7 +104,7 @@
     ],
     "css": [
       "assets/Settings-DF9kVGVR.css",
-      "assets/app-BB1yxztZ.css"
+      "assets/app-Ct8-bMwH.css"
     ]
   },
   "resources/js/components/pages/Transactions.vue": {
@@ -117,7 +117,7 @@
     ],
     "css": [
       "assets/Transactions-Su4mbCgn.css",
-      "assets/app-BB1yxztZ.css"
+      "assets/app-Ct8-bMwH.css"
     ]
   }
 }
