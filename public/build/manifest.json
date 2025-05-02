@@ -8,7 +8,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/app.css": {
-    "file": "assets/app-BB1yxztZ.css",
+    "file": "assets/app-Ct8-bMwH.css",
     "src": "resources/css/app.css",
     "isEntry": true
   },
@@ -53,7 +53,7 @@
     "src": "resources/fonts/remixicon.woff2"
   },
   "resources/js/app.js": {
-    "file": "assets/app-BBNJnC0I.js",
+    "file": "assets/app-B5fSuZ6Z.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -64,7 +64,7 @@
     ],
     "css": [
       "assets/app-s0Ms5QtG.css",
-      "assets/app-BB1yxztZ.css"
+      "assets/app-Ct8-bMwH.css"
     ],
     "assets": [
       "assets/bootstrap-icons-BtvjY1KL.woff2",
@@ -82,7 +82,7 @@
     ]
   },
   "resources/js/components/pages/DashboardHome.vue": {
-    "file": "assets/DashboardHome-Cga_Yv7t.js",
+    "file": "assets/DashboardHome-Bm6k1Az1.js",
     "name": "DashboardHome",
     "src": "resources/js/components/pages/DashboardHome.vue",
     "isDynamicEntry": true,
@@ -91,11 +91,11 @@
     ],
     "css": [
       "assets/DashboardHome-BBpex7vp.css",
-      "assets/app-BB1yxztZ.css"
+      "assets/app-Ct8-bMwH.css"
     ]
   },
   "resources/js/components/pages/Settings.vue": {
-    "file": "assets/Settings-B3WCWiN5.js",
+    "file": "assets/Settings-BA6-pf0i.js",
     "name": "Settings",
     "src": "resources/js/components/pages/Settings.vue",
     "isDynamicEntry": true,
@@ -104,11 +104,11 @@
     ],
     "css": [
       "assets/Settings-DF9kVGVR.css",
-      "assets/app-BB1yxztZ.css"
+      "assets/app-Ct8-bMwH.css"
     ]
   },
   "resources/js/components/pages/Transactions.vue": {
-    "file": "assets/Transactions-txp_ZyVh.js",
+    "file": "assets/Transactions-DV2Wv68J.js",
     "name": "Transactions",
     "src": "resources/js/components/pages/Transactions.vue",
     "isDynamicEntry": true,
@@ -117,7 +117,7 @@
     ],
     "css": [
       "assets/Transactions-Su4mbCgn.css",
-      "assets/app-BB1yxztZ.css"
+      "assets/app-Ct8-bMwH.css"
     ]
   }
 }
