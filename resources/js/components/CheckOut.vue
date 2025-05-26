@@ -120,8 +120,8 @@
                             :src="method.iconUrl"
                             :alt="method.name"
                             :style="{
-                                height: method.id === 'visa' ? '16px' : method.id === 'mastercard' ? '32px' : method.id === 'zimswitch' ? '32px' : method.id === 'innbuck' ? '16px' : method.id === 'ecocash' ? '18px' : '50px',
-                                width: method.id === 'visa' ? 'auto' : method.id === 'mastercard' ? 'auto' : method.id === 'zimswitch' ? 'auto' : method.id === 'innbuck' ? 'auto' : method.id === 'ecocash' ? 'auto' : '50px'
+                                height: method.id === 'visa_master' ? '16px' : method.id === 'omari' ? '32px' : method.id === 'zimswitch' ? '32px' : method.id === 'innbuck' ? '16px' : method.id === 'ecocash' ? '18px' : '50px',
+                                width: method.id === 'visa_master' ? 'auto' : method.id === 'omari' ? 'auto' : method.id === 'zimswitch' ? 'auto' : method.id === 'innbuck' ? 'auto' : method.id === 'ecocash' ? 'auto' : '50px'
                             }"
                             class="w-auto"
 
@@ -161,18 +161,40 @@
                 <div v-else-if="currentStep === 1" key="step2" class="space-y-4">
                 <h2 class="text-lg font-semibold text-gray-800 mb-4">Payment Details</h2>
 
-                <!-- Card Payment Form -->
-                <div v-if="isCardPayment" class="space-y-4">
+                <!-- Special message for Zimswitch and VISA/MasterCard -->
+                <div v-if="selectedMethod === 'zimswitch' || selectedMethod === 'visa_master'" class="space-y-4">
+                    <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
+                        <div class="flex items-center justify-center mb-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span class="font-semibold text-blue-700">Secure Payment</span>
+                        </div>
+                        <p class="text-blue-700 text-sm">
+                            <span v-if="selectedMethod === 'zimswitch'">Your Zimswitch card details will be collected securely on the next screen by our payment partner.</span>
+                            <span v-if="selectedMethod === 'visa_master'">Your VISA/MasterCard details will be collected securely on the next screen by our payment partner.</span>
+                        </p>
+                        <p class="mt-2 text-blue-700 text-sm font-medium">Click "Next" then "Pay Now" to proceed to the secure payment page.</p>
+                    </div>
+                </div>
+
+                <!-- Card Payment Form for other card methods (excluding Zimswitch and VISA/MasterCard) -->
+                <div v-else-if="isCardPayment && selectedMethod !== 'zimswitch' && selectedMethod !== 'visa_master'" class="space-y-4">
                     <div>
                     <label for="cardNumber" class="block text-sm font-medium text-gray-700 mb-1">Card Number</label>
-                    <input
-                        type="text"
-                        id="cardNumber"
-                        v-model="paymentDetails.cardNumber"
-                        placeholder="1234 5678 9012 3456"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                        @input="formatCardNumber"
-                    />
+                    <div class="relative">
+                        <input
+                            type="text"
+                            id="cardNumber"
+                            v-model="paymentDetails.cardNumber"
+                            placeholder="1234 5678 9012 3456"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                            @input="formatCardNumber"
+                        />
+                        <div v-if="detectedCardType" class="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center">
+                            <span class="text-sm font-medium text-gray-600">{{ detectedCardIcon }}</span>
+                        </div>
+                    </div>
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
@@ -234,9 +256,14 @@
                         </div>
                     </div>
 
-                    <div v-if="isCardPayment" class="flex justify-between">
+                    <div v-if="isCardPayment && selectedMethod !== 'zimswitch' && selectedMethod !== 'visa_master'" class="flex justify-between">
                         <span class="text-gray-600">Card Number</span>
                         <span class="font-medium">•••• •••• •••• {{ paymentDetails.cardNumber.slice(-4) }}</span>
+                    </div>
+
+                    <div v-if="selectedMethod === 'zimswitch' || selectedMethod === 'visa_master'" class="flex justify-between">
+                        <span class="text-gray-600">Card Details</span>
+                        <span class="font-medium text-blue-600">Will be collected securely on next screen</span>
                     </div>
 
                     <div v-if="isMobilePayment" class="flex justify-between">
@@ -298,7 +325,29 @@
                     <h3 class="text-center text-xl font-bold text-gray-800 mb-2">{{code}}</h3>
                 </div>
 
-            <!-- Countdown Timer -->
+                <!-- OTP Input for Omari -->
+                <div v-if="selectedMethod === 'omari' && !otpSubmitted" class="my-4 p-4 bg-gray-50 rounded-lg">
+                    <h4 class="text-center text-lg font-bold text-gray-800 mb-4">Enter OTP Sent to Your Phone</h4>
+                    <div class="flex flex-col items-center space-y-4">
+                        <input
+                            type="text"
+                            v-model="otpCode"
+                            placeholder="Enter OTP"
+                            class="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md text-center focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                            maxlength="6"
+                        />
+                        <button
+                            @click="submitOtp"
+                            class="w-full max-w-xs px-4 py-2 bg-primary hover:bg-primary/90 text-white font-bold rounded-lg transition-colors focus:outline-none"
+                            :disabled="!otpCode || otpCode.length < 4"
+                            :class="{'opacity-50 cursor-not-allowed': !otpCode || otpCode.length < 4}"
+                        >
+                            Verify OTP
+                        </button>
+                    </div>
+                </div>
+
+            <!-- Countdown Timer - Only show when not waiting for OTP input (for Omari) -->
             <div class="relative w-48 h-48 mb-6">
                 <!-- Circular Progress -->
                 <svg class="w-full h-full" viewBox="0 0 100 100">
@@ -329,8 +378,6 @@
                 <span class="text-4xl font-bold text-gray-800">{{ formattedTime }}</span>
                 <span class="text-sm text-gray-500 mt-1">remaining</span>
                 </div>
-
-
             </div>
 
             <!-- Status Text -->
@@ -339,8 +386,11 @@
                 <span v-if="selectedMethod === 'innbuck'">
                     Check your <strong class="font-bold">InnBucks</strong> app for confirmation prompt.
                 </span>
-                <span v-else>
-                    Check your <strong class="font-bold">EcoCash</strong> phone for the payment prompt.
+                <span v-if="selectedMethod === 'ecocash'">
+                    Check your <strong class="font-bold">EcoCash</strong> phone for the payment confirmation OTP.
+                </span>
+                <span v-if="selectedMethod === 'omari'">
+                    Check your <strong class="font-bold">OMARI</strong> phone for the payment confirmation OTP.
                 </span>
             </p>
 
@@ -395,6 +445,8 @@ export default {
             countdownInterval: null,
             message: '',
             error: '',
+            otpCode: '',
+            otpSubmitted: false,
             tokenData: null,
             currentStep: 0,
             merchant: {
@@ -417,16 +469,9 @@ export default {
             ],
             paymentMethods: [
                 {
-                    id: 'visa',
-                    name: 'VISA',
-                    iconUrl: 'assets/visa.png',
-                    component: false,
-                    type: 'card'
-                },
-                {
-                    id: 'mastercard',
-                    name: 'MASTERCARD',
-                    iconUrl: 'assets/mastercard.png',
+                    id: 'visa_master',
+                    name: 'VISA_MASTER',
+                    iconUrl: 'assets/visa_master.png',
                     component: false,
                     type: 'card'
                 },
@@ -436,6 +481,13 @@ export default {
                     iconUrl: 'assets/zimswitch.png',
                     component: false,
                     type: 'card'
+                },
+                {
+                    id: 'omari',
+                    name: 'OMARI',
+                    iconUrl: 'assets/omari.png',
+                    component: false,
+                    type: 'mobile'
                 },
                 {
                     id: 'innbuck',
@@ -457,8 +509,11 @@ export default {
                 cardNumber: '',
                 expiryDate: '',
                 cvv: '',
+                nameOnCard: '',
                 phoneNumber: ''
-            }
+            },
+            detectedCardType: '',
+            detectedCardIcon: '',
         };
     },
     computed: {
@@ -493,7 +548,11 @@ export default {
             return this.selectedMethodDetails.component || false;
         },
         isFormValid() {
-            if (this.isCardPayment) {
+            // For Zimswitch and VISA/MasterCard, we don't need to validate card details
+            // as they'll be collected on the hosted payment pages
+            if (this.selectedMethod === 'zimswitch' || this.selectedMethod === 'visa_master') {
+                return true;
+            } else if (this.isCardPayment) {
                 return (
                     this.paymentDetails.cardNumber.replace(/\s/g, '').length >= 16 &&
                     this.paymentDetails.expiryDate.length === 5 &&
@@ -562,6 +621,41 @@ export default {
             }
 
             this.paymentDetails.cardNumber = parts.join(' ');
+
+            // Detect card type in real-time
+            this.detectCardType(value);
+        },
+        detectCardType(cardNumber) {
+            // Remove spaces and non-numeric characters
+            cardNumber = cardNumber.replace(/\D/g, '');
+
+            // Check for common card types based on patterns
+            let cardType = '';
+            let cardIcon = '';
+
+            // Visa cards start with 4
+            if (/^4/.test(cardNumber)) {
+                cardType = 'Visa';
+                cardIcon = '💳 Visa';
+            }
+            // Mastercard starts with 51-55 or 2221-2720
+            else if (/^(5[1-5]|222[1-9]|22[3-9]|2[3-6]|27[0-1]|2720)/.test(cardNumber)) {
+                cardType = 'MasterCard';
+                cardIcon = '💳 MasterCard';
+            }
+            // American Express starts with 34 or 37
+            else if (/^3[47]/.test(cardNumber)) {
+                cardType = 'American Express';
+                cardIcon = '💳 AMEX';
+            }
+            // Discover starts with 6011, 622126-622925, 644-649, 65
+            else if (/^(6011|622(12[6-9]|1[3-9]|[2-8]|9[0-1][0-9]|92[0-5])|64[4-9]|65)/.test(cardNumber)) {
+                cardType = 'Discover';
+                cardIcon = '💳 Discover';
+            }
+
+            this.detectedCardType = cardType;
+            this.detectedCardIcon = cardIcon;
         },
         formatExpiryDate() {
             let value = this.paymentDetails.expiryDate.replace(/\D/g, '');
@@ -616,30 +710,124 @@ export default {
         this.isLoading = true;
 
 
-        const requestData = {
+        // Create base request data
+        let requestData = {
             paymentMethod: this.selectedMethodName.toUpperCase(),
             amount: this.payment.amount,
             charge: this.payment.charge,
             total: this.payment.total,
             currency: this.payment.currency,
-            phoneNumber: this.paymentDetails.phoneNumber,
-            cardNumber: this.paymentDetails.cardNumber,
-            expiryDate: this.paymentDetails.expiryDate,
-            cvv: this.paymentDetails.cvv,
             user: this.tokenData.user,
             narration: this.selectedMethodName.toUpperCase() + ' Payment',
             type: 'PAYMENT',
         };
 
+        // For Zimswitch and VISA/MasterCard, we don't include card details as they'll be collected on the hosted payment page
+        if (this.selectedMethod !== 'zimswitch' && this.selectedMethod !== 'visa_master') {
+            // Only add card or phone details for payments that don't use hosted payment pages
+            if (this.isCardPayment) {
+                requestData = {
+                    ...requestData,
+                    cardNumber: this.paymentDetails.cardNumber,
+                    expiryDate: this.paymentDetails.expiryDate,
+                    cvv: this.paymentDetails.cvv,
+                };
+            } else if (this.isMobilePayment) {
+                requestData = {
+                    ...requestData,
+                    phoneNumber: this.paymentDetails.phoneNumber,
+                };
+            }
+        }
+
 
         try {
             const response = await axios.post('/api/v1/transactions/confirmation', requestData);
             this.isLoading = false;
-            if (response.data.success) {
 
-                this.confirmPaymentSuccess(response.data.data,response.data.trace);
+            if (response.data.success) {
                 this.trace = response.data.trace;
                 this.returnUrl = response.data.returnUrl;
+
+                // Check for errors in the response first
+                if (!response.data.success || (response.data.data && response.data.data.success === false)) {
+                    this.isLoading = false;
+                    let errorMessage = '';
+
+                    // Handle iVeri specific errors that may be nested in the response
+                    if (this.selectedMethod === 'visa_master' && response.data.data) {
+                        const responseData = response.data.data;
+
+                        if (responseData.responseData && responseData.responseData.Result) {
+                            // Extract the detailed error message from the iVeri response
+                            errorMessage = `${responseData.message}: ${responseData.responseData.Result.Description} (Code: ${responseData.responseData.Result.Code})`;
+                        } else {
+                            errorMessage = responseData.message || 'Payment processing failed';
+                        }
+                    } else {
+                        // Default error handling for other payment methods
+                        errorMessage = response.data.message ||
+                                      (response.data.data ? response.data.data.message : 'Payment failed');
+                    }
+                    this.$swal.fire(
+                        "Payment Failed",
+                        errorMessage || "Payment confirmation failed.",
+                        "error"
+                    );
+
+                    // Also update the UI to show the error
+                    this.errorMessage = errorMessage;
+                    this.hasError = true;
+                    return;
+                }
+
+                // Check if this is an Omari payment that requires OTP immediately
+                if (this.selectedMethod === "omari" && response.data.requiresOtp) {
+                    // Skip the normal QR code display and show OTP input immediately
+                    this.isProcessing = true;
+                    this.countdownTime = 5 * 60; // 5 minutes in seconds
+                    this.remainingTime = this.countdownTime;
+
+                    // Start countdown timer
+                    this.startCountdown();
+
+                    // Start polling
+                    this.startPolling(response.data.trace);
+                } else if ((this.selectedMethod === "zimswitch" || this.selectedMethod === "visa_master") &&
+                          (response.data.checkoutId || response.data.redirectUrl)) {
+                    // For Zimswitch and VISA/Master payments that use hosted payment pages,
+                    // we'll use a redirect approach to the payment processor
+
+                    // Show loading state for either payment method
+                    this.isLoading = true;
+                    this.message = 'Preparing secure payment form...';
+
+                    // Check if we have a direct redirect URL (for iVeri)
+                    if (this.selectedMethod === "visa_master" && response.data.redirectUrl) {
+                        // Create a full-page payment overlay similar to Zimswitch but for iVeri
+                        this.createPaymentOverlay(
+                            'VISA/MasterCard Payment',
+                            this.payment.currency,
+                            this.formatAmount(this.payment.total),
+                            response.data.redirectUrl
+                        );
+                        return;
+                    }
+                    // Handle Zimswitch payment
+                    else if (this.selectedMethod === "zimswitch" && response.data.checkoutId) {
+                        const baseUrl = response.data.paymentUrl;
+                        const checkoutId = response.data.checkoutId;
+
+                        // Create a payment form for Zimswitch with EFTPay widget
+                        this.createZimswitchPaymentForm(baseUrl, checkoutId);
+                        return;
+                    }
+
+                    // [Code removed: This block is no longer needed as it's been refactored into helper methods]
+                } else {
+                    // Normal flow for other payment methods
+                    this.confirmPaymentSuccess(response.data.data, response.data.trace);
+                }
 
             } else {
                 this.$swal.fire(
@@ -650,13 +838,14 @@ export default {
                 // alert('Payment confirmation failed: ' + response.data.message);
             }
         } catch (error) {
+            console.log(error);
             this.isLoading = false;
             this.$swal.fire(
                     "Payment Failed",
-                   'Error confirming payment:', error.response?.data || error.message,
+                   'Error confirming payment:', error.response?.data || error.message || response.data.data.message,
                     "error"
                 );
-            console.error('Error confirming payment:', error.response?.data || error.message);
+            console.error('Error confirming payment:', error.response?.data || error.message || response.data.data.message);
             // alert('An error occurred while confirming the payment.');
         }
     },
@@ -673,36 +862,41 @@ export default {
                     this.countdownTime = 10 * 60; // 10 minutes in seconds
                 } else if (this.selectedMethod === "ecocash") {
                     this.countdownTime = 1 * 60; // 1 minute in seconds
+                } else if (this.selectedMethod === "omari") {
+                    this.countdownTime = 5 * 60; // 5 minutes in seconds
                 }
 
                 this.remainingTime = this.countdownTime;
 
-                // Start countdown timer
-                this.countdownInterval = setInterval(() => {
-                    if (this.remainingTime > 0) {
-                        this.remainingTime--;
-                    } else {
-                        clearInterval(this.countdownInterval);
-                        this.stopPolling();
-                        this.$swal.fire(
-                            "Timeout",
-                            "Payment session timed out. Please try again.",
-                            "error"
-                        );
-                        this.isProcessing = false;
-                    }
-                }, 1000);
-
-                // Start polling
+                // Start countdown and polling
+                this.startCountdown();
                 this.startPolling(trace);
             }
+        },
+
+        startCountdown() {
+            // Start countdown timer
+            this.countdownInterval = setInterval(() => {
+                if (this.remainingTime > 0) {
+                    this.remainingTime--;
+                } else {
+                    clearInterval(this.countdownInterval);
+                    this.stopPolling();
+                    this.$swal.fire(
+                        "Timeout",
+                        "Payment session timed out. Please try again.",
+                        "error"
+                    );
+                    this.isProcessing = false;
+                }
+            }, 1000);
         },
 
         startPolling(trace) {
             this.pollAttempts = 0;
             this.pollingInterval = setInterval(() => {
                 this.checkTransactionStatus(trace);
-            }, this.selectedMethod === "innbuck" ? 30000 : 5000); // 30s or 5s
+            }, this.getPollingInterval()); // Use a method to determine interval based on payment method
         },
 
         stopPolling() {
@@ -753,8 +947,14 @@ export default {
                     );
                     this.isProcessing = false;
                     window.location.href = this.returnUrl;
+                } else if (response.data.status === 'PENDING') {
+                    // Check if we need to collect OTP (Omari payment)
+                    if (response.data.requiresOtp && this.selectedMethod === 'omari' && !this.otpSubmitted) {
+                        // We'll show the OTP input field, but continue polling
+                        // The OTP will be submitted via the submitOtp method
+                    }
+                    // Otherwise continue polling
                 }
-                // If status is still pending, continue polling
             } catch (error) {
                 console.error('Error checking transaction status:', error);
                 this.$swal.fire(
@@ -802,6 +1002,287 @@ export default {
                     }
                 }
             });
+        },
+
+        getPollingInterval() {
+            // Return polling interval based on payment method
+            if (this.selectedMethod === "innbuck") {
+                return 30000; // 30s for InnBucks
+            } else if (this.selectedMethod === "omari") {
+                return 10000; // 10s for Omari
+            } else {
+                return 5000; // 5s default
+            }
+        },
+
+        submitOtp() {
+            if (!this.otpCode || this.otpCode.length < 4) {
+                return;
+            }
+
+            this.otpSubmitted = true;
+
+            // Submit OTP to dedicated Omari OTP endpoint
+            axios.post('/api/v1/transactions/omari-otp', {
+                trace: this.trace,
+                otp: this.otpCode
+            }).then(response => {
+                if (response.data.success) {
+                    console.log('OTP submitted successfully:', response.data);
+
+                    // Start countdown timer after OTP is submitted and verified
+                    this.startCountdown();
+
+                    // Start polling for status updates
+                    this.startPolling(this.trace);
+
+                    // Show success message
+                    this.$swal.fire({
+                        title: "OTP Verified",
+                        text: "Payment is being processed",
+                        icon: "success",
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                } else {
+                    this.otpSubmitted = false; // Allow retry
+
+                    // Display specific error message for known error codes
+                    let errorMessage = response.data.message || "Failed to verify OTP. Please try again.";
+                    let errorTitle = "Error";
+
+                    // Handle specific error codes
+                    if (response.data.responseCode === "051") {
+                        errorTitle = "Insufficient Funds";
+                        errorMessage = "Your payment could not be processed due to insufficient funds.";
+                    }
+
+                    this.$swal.fire(
+                        errorTitle,
+                        errorMessage,
+                        "error"
+                    ).then(() => {
+                        // If it's a payment failure (not just an OTP validation error), redirect to return URL
+                        if (response.data.responseCode) {
+                            window.location.href = this.returnUrl;
+                        }
+                    });
+                }
+            }).catch(error => {
+                console.error('Error submitting OTP:', error);
+                this.otpSubmitted = false; // Allow retry
+                this.$swal.fire(
+                    "Error",
+                    error.response?.data?.message || "Failed to verify OTP. Please try again.",
+                    "error"
+                );
+            });
+        },
+
+        /**
+         * Creates a payment overlay for iVeri redirects
+         * @param {string} title - The title to display in the payment overlay
+         * @param {string} currency - The currency code (e.g., USD)
+         * @param {string} amount - The formatted amount
+         * @param {string} redirectUrl - The URL to redirect to for payment
+         */
+        createPaymentOverlay(title, currency, amount, redirectUrl) {
+            // Create base overlay
+            const overlay = this.createBaseOverlay();
+
+            // Create header with title and amount
+            const header = this.createOverlayHeader(title, `${currency} ${amount}`);
+            overlay.appendChild(header);
+
+            // Create the iframe container
+            const iframeContainer = document.createElement('div');
+            iframeContainer.style.width = '100%';
+            iframeContainer.style.maxWidth = '500px';
+            iframeContainer.style.height = '400px';
+            iframeContainer.style.backgroundColor = '#fff';
+            iframeContainer.style.borderRadius = '14px';
+            iframeContainer.style.overflow = 'hidden';
+            iframeContainer.style.boxShadow = '0 10px 25px rgba(0,0,0,0.3)';
+
+            // Create and add the iframe
+            const iframe = document.createElement('iframe');
+            iframe.src = redirectUrl;
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+            iframeContainer.appendChild(iframe);
+
+            overlay.appendChild(iframeContainer);
+
+            // Add a cancel button
+            const cancelButton = this.createCancelButton(overlay);
+            overlay.appendChild(cancelButton);
+
+            // Add the overlay to the body
+            document.body.appendChild(overlay);
+
+            this.isLoading = false;
+            console.log('Displaying iVeri payment form with redirect URL:', redirectUrl);
+        },
+
+        /**
+         * Creates a payment form for Zimswitch using EFTPay
+         * @param {string} baseUrl - The base URL for the EFTPay API
+         * @param {string} checkoutId - The checkout ID for the payment
+         */
+        createZimswitchPaymentForm(baseUrl, checkoutId) {
+            // Create base overlay
+            const overlay = this.createBaseOverlay();
+
+            // Create header with title and amount
+            const header = this.createOverlayHeader('Zimswitch Payment', `${this.payment.currency} ${this.formatAmount(this.payment.total)}`);
+            overlay.appendChild(header);
+
+            // Create the widget container
+            const widgetContainer = document.createElement('div');
+            widgetContainer.style.width = '100%';
+            widgetContainer.style.maxWidth = '500px';
+            widgetContainer.style.padding = '25px';
+            widgetContainer.style.boxShadow = '0 10px 25px rgba(0,0,0,0.3), 0 0 1px rgba(255,255,255,0.1)';
+            widgetContainer.style.borderRadius = '14px';
+            widgetContainer.style.backgroundColor = '#fff';
+            widgetContainer.style.border = '1px solid rgba(255,255,255,0.15)';
+            widgetContainer.style.transform = 'translateY(0)';
+            widgetContainer.style.transition = 'transform 0.3s ease, box-shadow 0.3s ease';
+
+            // Add hover effects
+            widgetContainer.onmouseover = () => {
+                widgetContainer.style.transform = 'translateY(-2px)';
+                widgetContainer.style.boxShadow = '0 14px 30px rgba(0,0,0,0.4), 0 0 1px rgba(255,255,255,0.15)';
+            };
+            widgetContainer.onmouseout = () => {
+                widgetContainer.style.transform = 'translateY(0)';
+                widgetContainer.style.boxShadow = '0 10px 25px rgba(0,0,0,0.3), 0 0 1px rgba(255,255,255,0.1)';
+            };
+
+            // Add form for the EFTPay widget
+            const form = document.createElement('form');
+            form.action = `${window.location.origin}/payment/callback`;
+            form.className = 'paymentWidgets';
+            form.setAttribute('data-brands', 'PRIVATE_LABEL');
+            widgetContainer.appendChild(form);
+
+            overlay.appendChild(widgetContainer);
+
+            // Add a cancel button
+            const cancelButton = this.createCancelButton(overlay);
+            overlay.appendChild(cancelButton);
+
+            // Add the overlay to the body
+            document.body.appendChild(overlay);
+
+            // Add the EFTPay script
+            const script = document.createElement('script');
+            script.src = `${baseUrl}/v1/paymentWidgets.js?checkoutId=${checkoutId}`;
+            script.setAttribute('crossorigin', 'anonymous');
+            document.head.appendChild(script);
+
+            this.isLoading = false;
+            console.log('Displaying EFTPay payment form with checkout ID:', checkoutId);
+        },
+
+        /**
+         * Creates a base overlay for payment forms
+         * @returns {HTMLDivElement} - The overlay element
+         */
+        createBaseOverlay() {
+            const overlay = document.createElement('div');
+            overlay.id = 'payment-overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.background = 'linear-gradient(135deg, rgba(26, 32, 44, 0.96) 0%, rgba(17, 24, 39, 0.96) 100%)';
+            overlay.style.backdropFilter = 'blur(10px)';
+            overlay.style.webkitBackdropFilter = 'blur(10px)';
+            overlay.style.zIndex = '9999';
+            overlay.style.display = 'flex';
+            overlay.style.flexDirection = 'column';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.padding = '20px';
+            return overlay;
+        },
+
+        /**
+         * Creates a header for the payment overlay
+         * @param {string} title - The title to display
+         * @param {string} subtitle - The subtitle to display (usually the amount)
+         * @returns {HTMLDivElement} - The header element
+         */
+        createOverlayHeader(title, subtitle) {
+            const header = document.createElement('div');
+            header.style.marginBottom = '30px';
+            header.style.textAlign = 'center';
+
+            // Add heading
+            const heading = document.createElement('h2');
+            heading.textContent = title;
+            heading.style.fontSize = '28px';
+            heading.style.color = '#ffffff';
+            heading.style.margin = '20px 0';
+            heading.style.fontWeight = 'bold';
+            header.appendChild(heading);
+
+            // Add subheading
+            const subheading = document.createElement('p');
+            subheading.textContent = `Amount: ${subtitle}`;
+            subheading.style.fontSize = '20px';
+            subheading.style.color = '#ffffff';
+            subheading.style.margin = '10px 0';
+            header.appendChild(subheading);
+
+            return header;
+        },
+
+        /**
+         * Creates a cancel button for the payment overlay
+         * @param {HTMLDivElement} overlay - The overlay to remove when canceled
+         * @returns {HTMLButtonElement} - The cancel button
+         */
+        createCancelButton(overlay) {
+            const cancelButton = document.createElement('button');
+            cancelButton.textContent = 'Cancel Payment';
+            cancelButton.style.marginTop = '30px';
+            cancelButton.style.padding = '14px 28px';
+            cancelButton.style.backgroundColor = 'rgba(220, 38, 38, 0.9)';
+            cancelButton.style.color = 'white';
+            cancelButton.style.border = 'none';
+            cancelButton.style.borderRadius = '8px';
+            cancelButton.style.cursor = 'pointer';
+            cancelButton.style.fontSize = '16px';
+            cancelButton.style.fontWeight = 'bold';
+            cancelButton.style.boxShadow = '0 4px 12px rgba(220, 38, 38, 0.4)';
+            cancelButton.style.transition = 'all 0.2s ease';
+
+            // Add hover and active effects
+            cancelButton.onmouseover = () => {
+                cancelButton.style.backgroundColor = 'rgba(220, 38, 38, 1)';
+                cancelButton.style.transform = 'translateY(-2px)';
+                cancelButton.style.boxShadow = '0 6px 16px rgba(220, 38, 38, 0.5)';
+            };
+            cancelButton.onmouseout = () => {
+                cancelButton.style.backgroundColor = 'rgba(220, 38, 38, 0.9)';
+                cancelButton.style.transform = 'translateY(0)';
+                cancelButton.style.boxShadow = '0 4px 12px rgba(220, 38, 38, 0.4)';
+            };
+            cancelButton.onmousedown = () => {
+                cancelButton.style.transform = 'translateY(1px)';
+                cancelButton.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.4)';
+            };
+            cancelButton.onclick = () => {
+                // Remove the overlay and return to app
+                document.body.removeChild(overlay);
+                this.isLoading = false;
+            };
+
+            return cancelButton;
         },
 
         beforeDestroy() {

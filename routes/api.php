@@ -92,6 +92,7 @@ Route::middleware([JwtMiddleware::class])->group(function () {
     Route::delete('/settings/reset', [SettingsController::class, 'resetSettings']); // Reset user settings to defaults
 });
 Route::post('/transactions/confirmation', [TransactionController::class, 'confirmTransaction']);
+Route::post('/transactions/omari-otp', [TransactionController::class, 'processOmariOtp']);
 Route::post('/transactions/process', [TransactionController::class, 'processTransaction']);
 Route::post('/transactions/cancel', [TransactionController::class, 'cancelTransaction']);
 Route::post('/transactions/status', [TransactionController::class, 'checkTransactionStatus']);

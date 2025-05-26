@@ -47,4 +47,25 @@ return [
         'password' => env('ECOCASH_PASSWORD'),
     ],
 
+    'omari' => [
+        'url' => env('OMARI_URL'),
+        'merchant_key' => env('OMARI_MERCHANT_KEY'),
+    ],
+
+    'zimswitch' => [
+        'url' => env('ZIMSWITCH_URL'),
+        'entity_id' => env('ZIMSWITCH_ENTITY_ID'),
+        'auth_token' => env('ZIMSWITCH_AUTH_TOKEN'),
+        'payment_brand' => env('ZIMSWITCH_PAYMENT_BRAND'),
+    ],
+
+    'iveri' => [
+        'url' => env('IVERI_URL'),
+        'application_id' => env('IVERI_APPLICATION_ID'),
+        'certificate_id' => env('IVERI_CERTIFICATE_ID'),
+        'user_group' => env('IVERI_USER_GROUP'),
+        'mode' => env('IVERI_MODE', 'TEST'),
+        'version' => env('IVERI_VERSION', '1.0'),
+    ],
+
 ];
