@@ -90,12 +90,26 @@ class TransactionController extends Controller
                 $requiresOtp = false;  // May change based on 3D Secure requirements
                 $hasError = isset($response['error']) && $response['error'] === true;
                 
-                // Check if we need to redirect to 3D Secure
+                // Check for direct 3D Secure redirect URL
                 if (isset($response['redirectUrl'])) {
                     return response()->json([
                         'success' => true,
                         'redirectUrl' => $response['redirectUrl'],
-                        'trace' => $trace
+                        'trace' => $trace,
+                        'reference' => $response['reference'] ?? null,
+                        'returnUrl' => url('/payment/complete?status=success')
+                    ]);
+                }
+                
+                // Check for ACS form data that needs to be posted to 3D Secure
+                if (isset($response['acsUrl']) && isset($response['acsPayload'])) {
+                    return response()->json([
+                        'success' => true,
+                        'acsUrl' => $response['acsUrl'],
+                        'acsPayload' => $response['acsPayload'],
+                        'trace' => $trace,
+                        'reference' => $response['reference'] ?? null,
+                        'returnUrl' => url('/payment/complete?status=success')
                     ]);
                 }
             }

@@ -33,20 +33,20 @@ class IVeriPaymentService
      */
     public function processPayment($data)
     {
+        
         // Generate a unique transaction ID if not provided
         $transactionId = $data['trace'] ?? (string) Str::uuid();
 
         // Format amount as required by iVeri (No decimal point, padded with zeros)
         $amount = number_format($data['amount'] * 100, 0, '', '');
 
-        // Use iVeri Redirect - hosted payment page approach (similar to Zimswitch)
+        // Using the exact structure from the working cURL example
         $payload = [
             'Version' => '2.0',
             'CertificateID' => $this->certificateId,
             'ProductType' => 'Enterprise',
             'ProductVersion' => 'WebAPI',
             'Direction' => 'Request',
-            'Interface' => 'Redirect', // Set the interface to Redirect for hosted payment page
             'Transaction' => [
                 'ApplicationID' => $this->applicationId,
                 'Command' => 'Debit',
@@ -54,29 +54,37 @@ class IVeriPaymentService
                 'Amount' => $amount,
                 'Currency' => $data['currency'] ?? 'USD',
                 'MerchantReference' => $transactionId,
-                // Don't include card details since they'll be collected on the hosted form
-                // Add callback URLs
-                'RedirectSuccessUrl' => route('payment.callback') . '?status=success&reference=' . $transactionId,
-                'RedirectFailureUrl' => route('payment.callback') . '?status=failure&reference=' . $transactionId,
-                'RedirectCancelUrl' => route('payment.callback') . '?status=cancel&reference=' . $transactionId,
-                // Add merchant details that were missing in previous implementation
-                'MerchantCity' => 'Harare', // Required field that was missing before
-                'MerchantCountryCode' => 'ZW'
+                'ApplicationMerchantCity' => 'Harare',
+                'ApplicationMerchantCountryCode' => 'ZW',
+                'ApplicationMerchantName' => 'Norah Payment Gateway',
+                // Card details
+                'PAN' => preg_replace('/\s+/', '', $data['cardNumber'] ?? ''),
+                'ExpiryDate' => $this->formatExpiryDateForIveri($data['expiryDate'] ?? ''),
+                'CardSecurityCode' => $data['cvv'] ?? '',
+                // Standard 3D Secure parameters
+                'ThreeDSecure_Required' => 'true',
+                'ThreeDSecure_Enabled' => 'true',
+                'ElectronicCommerceIndicator' => 'ThreeDSecure', // Required to avoid Code 255 error
+                'ThreeDSecure_TermUrl' => url('/payment/callback?reference=' . $transactionId),
+                'ThreeDSecure_AuthenticationType' => '01', // Fully authenticated transaction (01)
+                'ThreeDSecure_ProtocolVersion' => '2.1.0',
+                'CardHolderAuthenticationData' => 'AJkBCWhygQAAAAEDhXKBAAAAAAA=', // Required to avoid Code 255 error
+                'CardHolderAuthenticationID' => 'xVyRZy0bYuN69j1pZi/zlmC68Vw=', // Matching authentication ID
             ]
         ];
-        
-        // Add billing details if available
-        if (!empty($data['billing_address'])) {
-            $payload['Transaction']['BillingAddress'] = $data['billing_address'] ?? '';
-            $payload['Transaction']['BillingCity'] = $data['billing_city'] ?? '';
-            $payload['Transaction']['BillingCountryCode'] = $data['billing_country'] ?? 'ZW';
-            $payload['Transaction']['BillingPostalCode'] = $data['billing_zip'] ?? '';
-        }
-        
-        // Add email if available
-        if (!empty($data['user'])) {
-            $payload['Transaction']['CustomerEmailAddress'] = $data['user'];
-        }
+
+        // // Add billing details if available
+        // if (!empty($data['billing_address'])) {
+        //     $payload['Transaction']['BillingAddress'] = $data['billing_address'] ?? '';
+        //     $payload['Transaction']['BillingCity'] = $data['billing_city'] ?? '';
+        //     $payload['Transaction']['BillingCountryCode'] = $data['billing_country'] ?? 'ZW';
+        //     $payload['Transaction']['BillingPostalCode'] = $data['billing_zip'] ?? '';
+        // }
+
+        // // Add email if available
+        // if (!empty($data['user'])) {
+        //     $payload['Transaction']['CustomerEmailAddress'] = $data['user'];
+        // }
 
         // Log request payload for debugging (mask sensitive data)
         Log::debug('iVeri payment request', [
@@ -103,25 +111,50 @@ class IVeriPaymentService
 
             // Check if the response indicates a successful payment or redirect needed
             if ($response->successful()) {
-                // For Redirect interface, we're looking for a RedirectUrl to the hosted payment page
                 if (isset($responseData['Transaction'])) {
                     $transaction = $responseData['Transaction'];
-                    
-                    // Check if we have a redirect URL to the hosted payment page
-                    if (isset($transaction['RedirectUrl'])) {
+
+                    // Check for 3D Secure URL for card authentication (direct redirect)
+                    if (isset($transaction['ThreeDSecure_Url'])) {
                         return [
                             'success' => true,
-                            'paymentUrl' => $this->baseUrl, // Base URL for constructing the final payment page URL
-                            'redirectUrl' => $transaction['RedirectUrl'], // URL to redirect to for payment
-                            'checkoutId' => $transaction['TransactionIndex'] ?? $transactionId, // Used similar to Zimswitch's checkoutId
-                            'trace' => $transactionId
+                            'redirectUrl' => $transaction['ThreeDSecure_Url'],
+                            'trace' => $transactionId,
+                            'reference' => $transaction['TransactionIndex'] ?? null
                         ];
                     }
                     
+                    // Check for ACS Form data that needs to be posted to 3D Secure
+                    if (isset($transaction['ThreeDSecure_ACSUrl']) && isset($transaction['ThreeDSecure_Payload'])) {
+                        return [
+                            'success' => true,
+                            'acsUrl' => $transaction['ThreeDSecure_ACSUrl'],
+                            'acsPayload' => $transaction['ThreeDSecure_Payload'],
+                            'trace' => $transactionId,
+                            'reference' => $transaction['TransactionIndex'] ?? null
+                        ];
+                    }
+
+                    // Check if transaction has Result information (successful payment)
+                    if (isset($transaction['Result'])) {
+                        $result = $transaction['Result'];
+
+                        // Check if transaction is approved (Status 0 indicates success)
+                        if (isset($result['Status']) && $result['Status'] === '0') {
+                            return [
+                                'success' => true,
+                                'message' => 'Payment approved',
+                                'reference' => $transaction['TransactionIndex'] ?? null,
+                                'trace' => $transactionId,
+                                'responseData' => $transaction
+                            ];
+                        }
+                    }
+
                     // Check if transaction has Result information
                     if (isset($transaction['Result'])) {
                         $result = $transaction['Result'];
-                        
+
                         // Check if transaction is approved (Status 0 indicates success)
                         if (isset($result['Status']) && $result['Status'] === '0') {
                             return [
@@ -132,7 +165,7 @@ class IVeriPaymentService
                                 'responseData' => $transaction
                             ];
                         }
-                        
+
                         // If we have a result but it's not successful, return the error details
                         return [
                             'success' => false,
@@ -143,7 +176,7 @@ class IVeriPaymentService
                             'responseData' => $transaction
                         ];
                     }
-                    
+
                     // Check for pending status
                     if (isset($transaction['Status']) && $transaction['Status'] === 'Pending') {
                         return [
@@ -223,15 +256,15 @@ class IVeriPaymentService
                 // Based on sample response format
                 if (isset($responseData['Transaction'])) {
                     $transaction = $responseData['Transaction'];
-                    
+
                     // Check if transaction has Result information
                     if (isset($transaction['Result'])) {
                         $result = $transaction['Result'];
-                        
+
                         // Status 0 indicates success
                         $isSuccess = $result['Status'] === '0';
                         $isFailed = $result['Status'] !== '0';
-                        
+
                         return [
                             'success' => $isSuccess,
                             'error' => $isFailed,
@@ -275,13 +308,136 @@ class IVeriPaymentService
         // Format is typically MM/YY but iVeri expects MMYY
         // Remove any non-digit characters and spaces
         $cleaned = preg_replace('/[^0-9]/', '', $expiryDate);
-        
+
         // Make sure we have at least 4 digits (MMYY)
         if (strlen($cleaned) >= 4) {
             return substr($cleaned, 0, 4); // Take only first 4 digits (MMYY)
         }
-        
+
         // Return empty if format is invalid
         return '';
+    }
+    
+    /**
+     * Initiate 3D Secure enrollment process
+     *
+     * @param array $data
+     * @return array
+     */
+    public function initiate3DSecureEnrollment($data)
+    {
+        // Extract transaction data from the request
+        $transactionId = $data['trace'] ?? (string) Str::uuid();
+        $transactionIndex = $data['transactionIndex'] ?? null;
+        
+        // Prepare the 3D Secure Enrollment request
+        $payload = [
+            'Version' => '2.0',
+            'CertificateID' => $this->certificateId,
+            'ProductType' => 'Enterprise',
+            'ProductVersion' => 'WebAPI',
+            'Direction' => 'Request',
+            'Transaction' => [
+                'ApplicationID' => $this->applicationId,
+                'Command' => 'ThreeDSecure',
+                'Mode' => $this->mode,
+                'Function' => 'EnrollmentInitial',
+                'TransactionIndex' => $transactionIndex, // Required for 3DS enrollment
+                'ThreeDSecure_ProtocolVersion' => '2.1.0',
+                'ThreeDSecure_RedirectUrl' => route('payment.callback') . '?reference=' . $transactionId,
+                'ThreeDSecure_TermUrl' => route('payment.callback') . '?reference=' . $transactionId,
+                'ApplicationMerchantName' => 'Norah Payment Gateway',
+                'ApplicationMerchantCity' => 'Harare',
+                'ApplicationMerchantCountryCode' => 'ZW'
+            ]
+        ];
+        
+        // Log request payload for debugging (mask sensitive data)
+        Log::debug('iVeri 3DS enrollment request', [
+            'payload' => json_encode($payload),
+            'url' => $this->baseUrl . '/api/transactions'
+        ]);
+        
+        try {
+            // Make the API request to iVeri
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json'
+            ])->post($this->baseUrl . '/api/transactions', $payload);
+            
+            // Parse the response body
+            $responseData = $response->json();
+            
+            // Log the response for debugging
+            Log::debug('iVeri 3DS enrollment response', [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
+            
+            if ($response->successful()) {
+                if (isset($responseData['Transaction'])) {
+                    $transaction = $responseData['Transaction'];
+                    
+                    // Check for 3D Secure URL for authentication challenge
+                    if (isset($transaction['ThreeDSecure_Url'])) {
+                        return [
+                            'success' => true,
+                            'redirectUrl' => $transaction['ThreeDSecure_Url'],
+                            'reference' => $transaction['TransactionIndex'] ?? $transactionIndex,
+                            'trace' => $transactionId
+                        ];
+                    }
+                    
+                    // Check if we got a successful 3DS enrollment response
+                    if (isset($transaction['ThreeDSecure_AuthenticationValue'])) {
+                        return [
+                            'success' => true,
+                            'threeDSecureComplete' => true,
+                            'authValue' => $transaction['ThreeDSecure_AuthenticationValue'],
+                            'reference' => $transaction['TransactionIndex'] ?? $transactionIndex,
+                            'trace' => $transactionId,
+                            'responseData' => $transaction
+                        ];
+                    }
+                    
+                    // Handle any result codes or errors
+                    if (isset($transaction['Result'])) {
+                        $result = $transaction['Result'];
+                        
+                        return [
+                            'success' => false,
+                            'error' => true,
+                            'message' => $result['Description'] ?? 'Error during 3D Secure enrollment',
+                            'code' => $result['Code'] ?? 'unknown',
+                            'trace' => $transactionId,
+                            'responseData' => $transaction
+                        ];
+                    }
+                }
+            }
+            
+            // Handle failed API responses
+            return [
+                'success' => false,
+                'error' => true,
+                'message' => $responseData['message'] ?? 'Failed to process 3D Secure enrollment',
+                'trace' => $transactionId,
+                'responseData' => $responseData
+            ];
+            
+        } catch (\Exception $e) {
+            // Log the exception
+            Log::error('iVeri 3DS enrollment exception', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            // Return error response
+            return [
+                'success' => false,
+                'error' => true,
+                'message' => 'Error connecting to iVeri: ' . $e->getMessage(),
+                'trace' => $transactionId
+            ];
+        }
     }
 }

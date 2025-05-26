@@ -161,8 +161,8 @@
                 <div v-else-if="currentStep === 1" key="step2" class="space-y-4">
                 <h2 class="text-lg font-semibold text-gray-800 mb-4">Payment Details</h2>
 
-                <!-- Special message for Zimswitch and VISA/MasterCard -->
-                <div v-if="selectedMethod === 'zimswitch' || selectedMethod === 'visa_master'" class="space-y-4">
+                <!-- Special message for Zimswitch -->
+                <div v-if="selectedMethod === 'zimswitch'" class="space-y-4">
                     <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
                         <div class="flex items-center justify-center mb-2">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -171,15 +171,14 @@
                             <span class="font-semibold text-blue-700">Secure Payment</span>
                         </div>
                         <p class="text-blue-700 text-sm">
-                            <span v-if="selectedMethod === 'zimswitch'">Your Zimswitch card details will be collected securely on the next screen by our payment partner.</span>
-                            <span v-if="selectedMethod === 'visa_master'">Your VISA/MasterCard details will be collected securely on the next screen by our payment partner.</span>
+                            Your Zimswitch card details will be collected securely on the next screen by our payment partner.
                         </p>
                         <p class="mt-2 text-blue-700 text-sm font-medium">Click "Next" then "Pay Now" to proceed to the secure payment page.</p>
                     </div>
                 </div>
 
-                <!-- Card Payment Form for other card methods (excluding Zimswitch and VISA/MasterCard) -->
-                <div v-else-if="isCardPayment && selectedMethod !== 'zimswitch' && selectedMethod !== 'visa_master'" class="space-y-4">
+                <!-- Card Payment Form for card methods (excluding Zimswitch) -->
+                <div v-else-if="isCardPayment && selectedMethod !== 'zimswitch'" class="space-y-4">
                     <div>
                     <label for="cardNumber" class="block text-sm font-medium text-gray-700 mb-1">Card Number</label>
                     <div class="relative">
@@ -261,7 +260,7 @@
                         <span class="font-medium">•••• •••• •••• {{ paymentDetails.cardNumber.slice(-4) }}</span>
                     </div>
 
-                    <div v-if="selectedMethod === 'zimswitch' || selectedMethod === 'visa_master'" class="flex justify-between">
+                    <div v-if="selectedMethod === 'zimswitch'" class="flex justify-between">
                         <span class="text-gray-600">Card Details</span>
                         <span class="font-medium text-blue-600">Will be collected securely on next screen</span>
                     </div>
@@ -548,9 +547,9 @@ export default {
             return this.selectedMethodDetails.component || false;
         },
         isFormValid() {
-            // For Zimswitch and VISA/MasterCard, we don't need to validate card details
-            // as they'll be collected on the hosted payment pages
-            if (this.selectedMethod === 'zimswitch' || this.selectedMethod === 'visa_master') {
+            // For Zimswitch, we don't need to validate card details
+            // as they'll be collected on the hosted payment page
+            if (this.selectedMethod === 'zimswitch') {
                 return true;
             } else if (this.isCardPayment) {
                 return (
@@ -721,16 +720,21 @@ export default {
             narration: this.selectedMethodName.toUpperCase() + ' Payment',
             type: 'PAYMENT',
         };
+        
+        // Save return URL to state for redirects
+        this.returnUrl = this.tokenData.returnUrl || '/';
 
-        // For Zimswitch and VISA/MasterCard, we don't include card details as they'll be collected on the hosted payment page
-        if (this.selectedMethod !== 'zimswitch' && this.selectedMethod !== 'visa_master') {
-            // Only add card or phone details for payments that don't use hosted payment pages
-            if (this.isCardPayment) {
+        // For Zimswitch, we don't include card details as they'll be collected on the hosted payment page
+        // For VISA/MasterCard, we need to include card details for 3D Secure processing
+        if (this.selectedMethod !== 'zimswitch') {
+            // For VISA/MasterCard, we need to include card details for 3D Secure processing
+            if (this.selectedMethod === "visa_master") {
                 requestData = {
                     ...requestData,
                     cardNumber: this.paymentDetails.cardNumber,
                     expiryDate: this.paymentDetails.expiryDate,
                     cvv: this.paymentDetails.cvv,
+                    nameOnCard: this.paymentDetails.nameOnCard
                 };
             } else if (this.isMobilePayment) {
                 requestData = {
@@ -760,7 +764,7 @@ export default {
 
                         if (responseData.responseData && responseData.responseData.Result) {
                             // Extract the detailed error message from the iVeri response
-                            errorMessage = `${responseData.message}: ${responseData.responseData.Result.Description} (Code: ${responseData.responseData.Result.Code})`;
+                            errorMessage = `${responseData.responseData.Result.Description} (Code: ${responseData.responseData.Result.Code})`;
                         } else {
                             errorMessage = responseData.message || 'Payment processing failed';
                         }
@@ -802,19 +806,38 @@ export default {
                     this.isLoading = true;
                     this.message = 'Preparing secure payment form...';
 
-                    // Check if we have a direct redirect URL (for iVeri)
-                    if (this.selectedMethod === "visa_master" && response.data.redirectUrl) {
-                        // Create a full-page payment overlay similar to Zimswitch but for iVeri
-                        this.createPaymentOverlay(
-                            'VISA/MasterCard Payment',
-                            this.payment.currency,
-                            this.formatAmount(this.payment.total),
-                            response.data.redirectUrl
-                        );
-                        return;
-                    }
-                    // Handle Zimswitch payment
-                    else if (this.selectedMethod === "zimswitch" && response.data.checkoutId) {
+                    // Handle iVeri payment
+                    if (this.selectedMethod === "visa_master") {
+                        // Save trace ID for later status checks
+                        if (response.data.trace) {
+                            this.trace = response.data.trace;
+                        }
+                        
+                        // Case 1: Direct redirect URL to 3D Secure
+                        if (response.data.redirectUrl) {
+                            // Create a payment form for iVeri with redirect URL
+                            this.createPaymentOverlay(
+                                'Card Payment Authentication',
+                                this.payment.currency,
+                                this.formatAmount(this.payment.total),
+                                response.data.redirectUrl
+                            );
+                            return;
+                        }
+                        
+                        // Case 2: ACS form data for 3D Secure
+                        if (response.data.acsUrl && response.data.acsPayload) {
+                            // Create and submit an automatic form to the ACS URL
+                            this.create3DSecureForm(
+                                'Card Payment Authentication',
+                                this.payment.currency,
+                                this.formatAmount(this.payment.total),
+                                response.data.acsUrl,
+                                response.data.acsPayload
+                            );
+                            return;
+                        }                  // Handle Zimswitch payment
+                    } else if (this.selectedMethod === "zimswitch" && response.data.checkoutId) {
                         const baseUrl = response.data.paymentUrl;
                         const checkoutId = response.data.checkoutId;
 
@@ -1080,39 +1103,111 @@ export default {
         },
 
         /**
-         * Creates a payment overlay for iVeri redirects
+         * Opens a 3D Secure authentication popup window for iVeri payments
          * @param {string} title - The title to display in the payment overlay
          * @param {string} currency - The currency code (e.g., USD)
          * @param {string} amount - The formatted amount
-         * @param {string} redirectUrl - The URL to redirect to for payment
+         * @param {string} redirectUrl - The URL to open in the popup
          */
         createPaymentOverlay(title, currency, amount, redirectUrl) {
-            // Create base overlay
+            // Create a notification overlay to inform user about popup
             const overlay = this.createBaseOverlay();
 
             // Create header with title and amount
             const header = this.createOverlayHeader(title, `${currency} ${amount}`);
             overlay.appendChild(header);
 
-            // Create the iframe container
-            const iframeContainer = document.createElement('div');
-            iframeContainer.style.width = '100%';
-            iframeContainer.style.maxWidth = '500px';
-            iframeContainer.style.height = '400px';
-            iframeContainer.style.backgroundColor = '#fff';
-            iframeContainer.style.borderRadius = '14px';
-            iframeContainer.style.overflow = 'hidden';
-            iframeContainer.style.boxShadow = '0 10px 25px rgba(0,0,0,0.3)';
+            // Create notification container
+            const notificationContainer = document.createElement('div');
+            notificationContainer.style.width = '90%';
+            notificationContainer.style.maxWidth = '500px';
+            notificationContainer.style.padding = '30px';
+            notificationContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+            notificationContainer.style.borderRadius = '12px';
+            notificationContainer.style.textAlign = 'center';
+            notificationContainer.style.margin = '20px 0';
 
-            // Create and add the iframe
-            const iframe = document.createElement('iframe');
-            iframe.src = redirectUrl;
-            iframe.style.width = '100%';
-            iframe.style.height = '100%';
-            iframe.style.border = 'none';
-            iframeContainer.appendChild(iframe);
+            // Add notification text
+            const notificationText = document.createElement('p');
+            notificationText.innerHTML = 'We have opened a secure authentication window.<br>Please complete the verification process in the popup window.<br>If you don\'t see a popup, please check your browser\'s popup blocker.';
+            notificationText.style.color = '#ffffff';
+            notificationText.style.fontSize = '16px';
+            notificationText.style.lineHeight = '1.6';
+            notificationText.style.marginBottom = '20px';
+            notificationContainer.appendChild(notificationText);
 
-            overlay.appendChild(iframeContainer);
+            // Add popup reminder icon
+            const popupIcon = document.createElement('div');
+            popupIcon.innerHTML = '⚠️';
+            popupIcon.style.fontSize = '40px';
+            popupIcon.style.marginBottom = '20px';
+            notificationContainer.appendChild(popupIcon);
+
+            // Add reopen button in case popup is blocked
+            const reopenButton = document.createElement('button');
+            reopenButton.textContent = 'Reopen Authentication Window';
+            reopenButton.style.padding = '12px 24px';
+            reopenButton.style.backgroundColor = 'rgba(79, 70, 229, 0.9)';
+            reopenButton.style.color = 'white';
+            reopenButton.style.border = 'none';
+            reopenButton.style.borderRadius = '8px';
+            reopenButton.style.fontWeight = 'bold';
+            reopenButton.style.cursor = 'pointer';
+            reopenButton.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
+            reopenButton.style.transition = 'all 0.2s ease';
+
+            // Add hover and active effects
+            reopenButton.onmouseover = () => {
+                reopenButton.style.backgroundColor = 'rgba(79, 70, 229, 1)';
+                reopenButton.style.transform = 'translateY(-2px)';
+                reopenButton.style.boxShadow = '0 6px 16px rgba(79, 70, 229, 0.5)';
+            };
+            reopenButton.onmouseout = () => {
+                reopenButton.style.backgroundColor = 'rgba(79, 70, 229, 0.9)';
+                reopenButton.style.transform = 'translateY(0)';
+                reopenButton.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
+            };
+            reopenButton.onmousedown = () => {
+                reopenButton.style.transform = 'translateY(1px)';
+                reopenButton.style.boxShadow = '0 2px 8px rgba(79, 70, 229, 0.4)';
+            };
+
+            let popupWindow = null;
+            // Function to open popup
+            const openPopup = () => {
+                // Close existing popup if open
+                if (popupWindow && !popupWindow.closed) {
+                    popupWindow.close();
+                }
+                // Open new popup window
+                const width = 450;
+                const height = 600;
+                const left = (window.innerWidth - width) / 2 + window.screenX;
+                const top = (window.innerHeight - height) / 2 + window.screenY;
+                popupWindow = window.open(
+                    redirectUrl,
+                    '3DSecurePopup',
+                    `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
+                );
+                
+                // Focus the popup
+                if (popupWindow) {
+                    popupWindow.focus();
+                    
+                    // Check if popup was blocked
+                    setTimeout(() => {
+                        if (!popupWindow || popupWindow.closed || popupWindow.closed === undefined) {
+                            notificationText.innerHTML = '<span style="color:#f87171">Popup was blocked!</span><br>Please click the button below to open the authentication window.';
+                        }
+                    }, 1000);
+                }
+            };
+            
+            // Attach open popup handler to button
+            reopenButton.onclick = openPopup;
+            notificationContainer.appendChild(reopenButton);
+            
+            overlay.appendChild(notificationContainer);
 
             // Add a cancel button
             const cancelButton = this.createCancelButton(overlay);
@@ -1120,9 +1215,189 @@ export default {
 
             // Add the overlay to the body
             document.body.appendChild(overlay);
+            
+            // Open the popup window immediately
+            openPopup();
 
             this.isLoading = false;
-            console.log('Displaying iVeri payment form with redirect URL:', redirectUrl);
+            console.log('Opening 3D Secure popup window with URL:', redirectUrl);
+        },
+
+        /**
+         * Creates and submits a form for 3D Secure ACS authentication using popup method
+         * @param {string} title - The title to display in the notification overlay
+         * @param {string} currency - The currency code (e.g., USD)
+         * @param {string} amount - The formatted amount
+         * @param {string} acsUrl - The ACS URL to submit the form to
+         * @param {string} acsPayload - The encoded payload data to submit
+         */
+        create3DSecureForm(title, currency, amount, acsUrl, acsPayload) {
+            // Create notification overlay similar to the payment overlay
+            const overlay = this.createBaseOverlay();
+
+            // Create header with title and amount
+            const header = this.createOverlayHeader(title, `${currency} ${amount}`);
+            overlay.appendChild(header);
+
+            // Create notification container
+            const notificationContainer = document.createElement('div');
+            notificationContainer.style.width = '90%';
+            notificationContainer.style.maxWidth = '500px';
+            notificationContainer.style.padding = '30px';
+            notificationContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+            notificationContainer.style.borderRadius = '12px';
+            notificationContainer.style.textAlign = 'center';
+            notificationContainer.style.margin = '20px 0';
+            
+            // Initial loading state
+            const loadingText = document.createElement('p');
+            loadingText.innerHTML = 'Preparing secure authentication window...<br>Please wait a moment.';
+            loadingText.style.color = '#ffffff';
+            loadingText.style.fontSize = '16px';
+            loadingText.style.lineHeight = '1.6';
+            loadingText.style.marginBottom = '20px';
+            notificationContainer.appendChild(loadingText);
+            
+            // Add spinner
+            const spinner = document.createElement('div');
+            spinner.style.border = '5px solid rgba(255, 255, 255, 0.3)';
+            spinner.style.borderTop = '5px solid #ffffff';
+            spinner.style.borderRadius = '50%';
+            spinner.style.width = '50px';
+            spinner.style.height = '50px';
+            spinner.style.animation = 'spin 1s linear infinite';
+            spinner.style.margin = '0 auto 20px auto';
+            notificationContainer.appendChild(spinner);
+            
+            // Add the notification container to the overlay
+            overlay.appendChild(notificationContainer);
+            
+            // Add a cancel button
+            const cancelButton = this.createCancelButton(overlay);
+            overlay.appendChild(cancelButton);
+            
+            // Add the overlay to the body
+            document.body.appendChild(overlay);
+            
+            // Create an invisible iframe to handle the form submission
+            const hiddenIframe = document.createElement('iframe');
+            hiddenIframe.name = '3DSecureHiddenFrame';
+            hiddenIframe.style.width = '0';
+            hiddenIframe.style.height = '0';
+            hiddenIframe.style.border = 'none';
+            hiddenIframe.style.display = 'none';
+            document.body.appendChild(hiddenIframe);
+            
+            // Create a hidden form for the ACS submission
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = acsUrl;
+            form.target = '3DSecurePopup'; // Submit to a popup window
+            form.style.display = 'none';
+            
+            // Add the payload as a hidden field
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'PaReq'; // This is the standard name for 3D Secure
+            input.value = acsPayload;
+            form.appendChild(input);
+            
+            // Add TermUrl (where the bank should return control after authentication)
+            const termUrlInput = document.createElement('input');
+            termUrlInput.type = 'hidden';
+            termUrlInput.name = 'TermUrl';
+            termUrlInput.value = window.location.origin + '/payment/callback';
+            form.appendChild(termUrlInput);
+            
+            // Add MD (merchant data)
+            const mdInput = document.createElement('input');
+            mdInput.type = 'hidden';
+            mdInput.name = 'MD';
+            mdInput.value = this.trace || ''; // Use the trace as the merchant data
+            form.appendChild(mdInput);
+            
+            // Add the form to the document
+            document.body.appendChild(form);
+            
+            // Create a reopen button for the notification (initially hidden)
+            const reopenButton = document.createElement('button');
+            reopenButton.textContent = 'Reopen Authentication Window';
+            reopenButton.style.padding = '12px 24px';
+            reopenButton.style.backgroundColor = 'rgba(79, 70, 229, 0.9)';
+            reopenButton.style.color = 'white';
+            reopenButton.style.border = 'none';
+            reopenButton.style.borderRadius = '8px';
+            reopenButton.style.fontWeight = 'bold';
+            reopenButton.style.cursor = 'pointer';
+            reopenButton.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
+            reopenButton.style.transition = 'all 0.2s ease';
+            reopenButton.style.display = 'none'; // Hidden initially
+            
+            // Add hover and active effects
+            reopenButton.onmouseover = () => {
+                reopenButton.style.backgroundColor = 'rgba(79, 70, 229, 1)';
+                reopenButton.style.transform = 'translateY(-2px)';
+                reopenButton.style.boxShadow = '0 6px 16px rgba(79, 70, 229, 0.5)';
+            };
+            reopenButton.onmouseout = () => {
+                reopenButton.style.backgroundColor = 'rgba(79, 70, 229, 0.9)';
+                reopenButton.style.transform = 'translateY(0)';
+                reopenButton.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
+            };
+            reopenButton.onmousedown = () => {
+                reopenButton.style.transform = 'translateY(1px)';
+                reopenButton.style.boxShadow = '0 2px 8px rgba(79, 70, 229, 0.4)';
+            };
+            
+            // Function to open the popup and submit the form
+            let popupWindow = null;
+            const openPopupAndSubmitForm = () => {
+                // Close existing popup if open
+                if (popupWindow && !popupWindow.closed) {
+                    popupWindow.close();
+                }
+                
+                // Open new popup window
+                const width = 450;
+                const height = 600;
+                const left = (window.innerWidth - width) / 2 + window.screenX;
+                const top = (window.innerHeight - height) / 2 + window.screenY;
+                popupWindow = window.open(
+                    'about:blank',
+                    '3DSecurePopup',
+                    `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
+                );
+                
+                // Submit the form to the popup
+                if (popupWindow) {
+                    popupWindow.focus();
+                    form.submit();
+                    
+                    // Update the UI to show the authentication is in progress
+                    spinner.style.display = 'none';
+                    loadingText.innerHTML = 'Authentication window is open.<br>Please complete the verification in the popup window.';
+                    
+                    // Show the reopen button
+                    reopenButton.style.display = 'inline-block';
+                    notificationContainer.appendChild(reopenButton);
+                    
+                    // Check if popup was blocked
+                    setTimeout(() => {
+                        if (!popupWindow || popupWindow.closed || popupWindow.closed === undefined) {
+                            loadingText.innerHTML = '<span style="color:#f87171">Popup was blocked!</span><br>Please click the button below to open the authentication window.';
+                        }
+                    }, 1000);
+                }
+            };
+            
+            // Attach the open popup handler to the reopen button
+            reopenButton.onclick = openPopupAndSubmitForm;
+            
+            // Open the popup after a brief delay
+            setTimeout(openPopupAndSubmitForm, 1000);
+            
+            this.isLoading = false;
+            console.log('Opening 3D Secure popup for ACS URL:', acsUrl);
         },
 
         /**
