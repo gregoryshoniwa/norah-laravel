@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Test Widget Loading</title>
+    <script src="https://code.jquery.com/jquery.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .loading { background-color: #ffeaa7; }
+        .success { background-color: #00b894; color: white; }
+        .error { background-color: #e17055; color: white; }
+        .debug { background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>EFTPay Widget Loading Test</h1>
+    
+    <div id="status" class="status loading">Creating checkout...</div>
+    <div id="debug" class="debug"></div>
+    
+    <div id="widget-container" style="display: none;">
+        <h3>Payment Widget</h3>
+        <script>
+            var wpwlOptions = {
+                style: "plain",
+                brandDetection: false,
+                showPlaceholders: false,
+                onReady: function () {
+                    console.log("Widget ready!");
+                    document.getElementById('status').innerHTML = 'Widget loaded successfully!';
+                    document.getElementById('status').className = 'status success';
+                },
+                onError: function (error) {
+                    console.error("Widget error:", error);
+                    document.getElementById('status').innerHTML = 'Widget error: ' + error;
+                    document.getElementById('status').className = 'status error';
+                }
+            }
+        </script>
+        <form class="paymentWidgets" data-brands="PRIVATE_LABEL">
+        </form>
+    </div>
+
+    <script>
+        // Step 1: Create checkout
+        fetch('/api/v1/zimswitch/test-checkout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                amount: '1.00',
+                currency: 'USD'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Checkout response:', data);
+            
+            if (data.success && data.result.checkoutId) {
+                const checkoutId = data.result.checkoutId;
+                const scriptUrl = data.test_script_url;
+                
+                document.getElementById('debug').innerHTML = \`
+                    <strong>Debug Info:</strong><br>
+                    Checkout ID: \${checkoutId}<br>
+                    Script URL: \${scriptUrl}<br>
+                    Test Time: \${new Date().toISOString()}
+                \`;
+                
+                // Step 2: Load the widget script
+                document.getElementById('status').innerHTML = 'Loading widget...';
+                const script = document.createElement('script');
+                script.src = scriptUrl;
+                script.async = true;
+                
+                script.onload = function() {
+                    console.log('Script loaded successfully');
+                    document.getElementById('widget-container').style.display = 'block';
+                };
+                
+                script.onerror = function() {
+                    console.error('Script failed to load');
+                    document.getElementById('status').innerHTML = 'Failed to load widget script';
+                    document.getElementById('status').className = 'status error';
+                };
+                
+                document.head.appendChild(script);
+                
+            } else {
+                document.getElementById('status').innerHTML = 'Failed to create checkout';
+                document.getElementById('status').className = 'status error';
+                document.getElementById('debug').innerHTML = 'Error: ' + JSON.stringify(data, null, 2);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('status').innerHTML = 'Error: ' + error.message;
+            document.getElementById('status').className = 'status error';
+        });
+    </script>
+</body>
+</html>

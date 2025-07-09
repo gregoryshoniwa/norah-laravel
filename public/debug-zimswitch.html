@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Debug Zimswitch</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Debug Zimswitch Checkout</h1>
+    <button onclick="testCheckout()">Test Checkout Creation</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testCheckout() {
+            const result = document.getElementById('result');
+            result.innerHTML = 'Testing...';
+            
+            try {
+                const response = await fetch('/api/v1/zimswitch/test-checkout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        amount: '1.00',
+                        currency: 'USD'
+                    })
+                });
+                
+                const data = await response.json();
+                result.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                
+            } catch (error) {
+                result.innerHTML = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

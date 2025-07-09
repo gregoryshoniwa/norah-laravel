@@ -720,7 +720,7 @@ export default {
             narration: this.selectedMethodName.toUpperCase() + ' Payment',
             type: 'PAYMENT',
         };
-        
+
         // Save return URL to state for redirects
         this.returnUrl = this.tokenData.returnUrl || '/';
 
@@ -812,7 +812,7 @@ export default {
                         if (response.data.trace) {
                             this.trace = response.data.trace;
                         }
-                        
+
                         // Case 1: Direct redirect URL to 3D Secure
                         if (response.data.redirectUrl) {
                             // Create a payment form for iVeri with redirect URL
@@ -824,7 +824,7 @@ export default {
                             );
                             return;
                         }
-                        
+
                         // Case 2: ACS form data for 3D Secure
                         if (response.data.acsUrl && response.data.acsPayload) {
                             // Create and submit an automatic form to the ACS URL
@@ -836,13 +836,10 @@ export default {
                                 response.data.acsPayload
                             );
                             return;
-                        }                  // Handle Zimswitch payment
-                    } else if (this.selectedMethod === "zimswitch" && response.data.checkoutId) {
-                        const baseUrl = response.data.paymentUrl;
-                        const checkoutId = response.data.checkoutId;
-
-                        // Create a payment form for Zimswitch with EFTPay widget
-                        this.createZimswitchPaymentForm(baseUrl, checkoutId);
+                                                }                  // Handle Zimswitch payment - integrated in Vue.js
+                    } else if (this.selectedMethod === "zimswitch" && response.data.integrateInVue) {
+                        // Integrate Zimswitch payment directly in Vue.js component
+                        this.integrateZimswitchPayment(response.data);
                         return;
                     }
 
@@ -1189,11 +1186,11 @@ export default {
                     '3DSecurePopup',
                     `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
                 );
-                
+
                 // Focus the popup
                 if (popupWindow) {
                     popupWindow.focus();
-                    
+
                     // Check if popup was blocked
                     setTimeout(() => {
                         if (!popupWindow || popupWindow.closed || popupWindow.closed === undefined) {
@@ -1202,11 +1199,11 @@ export default {
                     }, 1000);
                 }
             };
-            
+
             // Attach open popup handler to button
             reopenButton.onclick = openPopup;
             notificationContainer.appendChild(reopenButton);
-            
+
             overlay.appendChild(notificationContainer);
 
             // Add a cancel button
@@ -1215,7 +1212,7 @@ export default {
 
             // Add the overlay to the body
             document.body.appendChild(overlay);
-            
+
             // Open the popup window immediately
             openPopup();
 
@@ -1248,7 +1245,7 @@ export default {
             notificationContainer.style.borderRadius = '12px';
             notificationContainer.style.textAlign = 'center';
             notificationContainer.style.margin = '20px 0';
-            
+
             // Initial loading state
             const loadingText = document.createElement('p');
             loadingText.innerHTML = 'Preparing secure authentication window...<br>Please wait a moment.';
@@ -1257,7 +1254,7 @@ export default {
             loadingText.style.lineHeight = '1.6';
             loadingText.style.marginBottom = '20px';
             notificationContainer.appendChild(loadingText);
-            
+
             // Add spinner
             const spinner = document.createElement('div');
             spinner.style.border = '5px solid rgba(255, 255, 255, 0.3)';
@@ -1268,17 +1265,17 @@ export default {
             spinner.style.animation = 'spin 1s linear infinite';
             spinner.style.margin = '0 auto 20px auto';
             notificationContainer.appendChild(spinner);
-            
+
             // Add the notification container to the overlay
             overlay.appendChild(notificationContainer);
-            
+
             // Add a cancel button
             const cancelButton = this.createCancelButton(overlay);
             overlay.appendChild(cancelButton);
-            
+
             // Add the overlay to the body
             document.body.appendChild(overlay);
-            
+
             // Create an invisible iframe to handle the form submission
             const hiddenIframe = document.createElement('iframe');
             hiddenIframe.name = '3DSecureHiddenFrame';
@@ -1287,38 +1284,38 @@ export default {
             hiddenIframe.style.border = 'none';
             hiddenIframe.style.display = 'none';
             document.body.appendChild(hiddenIframe);
-            
+
             // Create a hidden form for the ACS submission
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = acsUrl;
             form.target = '3DSecurePopup'; // Submit to a popup window
             form.style.display = 'none';
-            
+
             // Add the payload as a hidden field
             const input = document.createElement('input');
             input.type = 'hidden';
             input.name = 'PaReq'; // This is the standard name for 3D Secure
             input.value = acsPayload;
             form.appendChild(input);
-            
+
             // Add TermUrl (where the bank should return control after authentication)
             const termUrlInput = document.createElement('input');
             termUrlInput.type = 'hidden';
             termUrlInput.name = 'TermUrl';
             termUrlInput.value = window.location.origin + '/payment/callback';
             form.appendChild(termUrlInput);
-            
+
             // Add MD (merchant data)
             const mdInput = document.createElement('input');
             mdInput.type = 'hidden';
             mdInput.name = 'MD';
             mdInput.value = this.trace || ''; // Use the trace as the merchant data
             form.appendChild(mdInput);
-            
+
             // Add the form to the document
             document.body.appendChild(form);
-            
+
             // Create a reopen button for the notification (initially hidden)
             const reopenButton = document.createElement('button');
             reopenButton.textContent = 'Reopen Authentication Window';
@@ -1332,7 +1329,7 @@ export default {
             reopenButton.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
             reopenButton.style.transition = 'all 0.2s ease';
             reopenButton.style.display = 'none'; // Hidden initially
-            
+
             // Add hover and active effects
             reopenButton.onmouseover = () => {
                 reopenButton.style.backgroundColor = 'rgba(79, 70, 229, 1)';
@@ -1348,7 +1345,7 @@ export default {
                 reopenButton.style.transform = 'translateY(1px)';
                 reopenButton.style.boxShadow = '0 2px 8px rgba(79, 70, 229, 0.4)';
             };
-            
+
             // Function to open the popup and submit the form
             let popupWindow = null;
             const openPopupAndSubmitForm = () => {
@@ -1356,7 +1353,7 @@ export default {
                 if (popupWindow && !popupWindow.closed) {
                     popupWindow.close();
                 }
-                
+
                 // Open new popup window
                 const width = 450;
                 const height = 600;
@@ -1367,20 +1364,20 @@ export default {
                     '3DSecurePopup',
                     `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
                 );
-                
+
                 // Submit the form to the popup
                 if (popupWindow) {
                     popupWindow.focus();
                     form.submit();
-                    
+
                     // Update the UI to show the authentication is in progress
                     spinner.style.display = 'none';
                     loadingText.innerHTML = 'Authentication window is open.<br>Please complete the verification in the popup window.';
-                    
+
                     // Show the reopen button
                     reopenButton.style.display = 'inline-block';
                     notificationContainer.appendChild(reopenButton);
-                    
+
                     // Check if popup was blocked
                     setTimeout(() => {
                         if (!popupWindow || popupWindow.closed || popupWindow.closed === undefined) {
@@ -1389,19 +1386,366 @@ export default {
                     }, 1000);
                 }
             };
-            
+
             // Attach the open popup handler to the reopen button
             reopenButton.onclick = openPopupAndSubmitForm;
-            
+
             // Open the popup after a brief delay
             setTimeout(openPopupAndSubmitForm, 1000);
-            
+
             this.isLoading = false;
             console.log('Opening 3D Secure popup for ACS URL:', acsUrl);
         },
 
+                /**
+         * Integrates Zimswitch payment directly in Vue.js component
+         * @param {Object} paymentData - The payment data from Laravel
+         */
+        integrateZimswitchPayment(paymentData) {
+            this.trace = paymentData.trace;
+
+            // Show the integrated payment form
+            this.showZimswitchIntegratedPayment(
+                paymentData.authConfig.checkoutUrl,
+                paymentData.checkoutId,
+                paymentData.amount,
+                paymentData.currency
+            );
+        },
+
+                /**
+         * Shows the integrated Zimswitch payment form using EFTPay widget
+         * Matches the behavior and styling of test-zimswitch.html
+         * @param {string} checkoutUrl - The EFTPay checkout URL
+         * @param {string} checkoutId - The checkout ID
+         * @param {string} amount - The payment amount
+         * @param {string} currency - The payment currency
+         */
+        showZimswitchIntegratedPayment(checkoutUrl, checkoutId, amount, currency) {
+            // Create overlay with same styling as test page
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.8);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+                animation: fadeIn 0.3s ease;
+            `;
+
+            // Create container with same styling as test page
+            const container = document.createElement('div');
+            container.style.cssText = `
+                background: white;
+                padding: 30px;
+                border-radius: 10px;
+                max-width: 500px;
+                width: 90%;
+                position: relative;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease;
+            `;
+
+            // Create close button (same as test page)
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.style.cssText = `
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                background: #dc3545;
+                color: white;
+                border: none;
+                padding: 5px 10px;
+                border-radius: 3px;
+                cursor: pointer;
+                font-size: 12px;
+                z-index: 1;
+            `;
+            closeBtn.onclick = () => {
+                document.body.removeChild(overlay);
+                this.isLoading = false;
+            };
+
+            // Create title (same as test page)
+            const title = document.createElement('h3');
+            title.textContent = `Zimswitch Payment - ${currency} ${this.formatAmount(amount)}`;
+            title.style.cssText = `
+                margin: 0 0 20px 0;
+                color: #333;
+                text-align: center;
+                font-size: 18px;
+            `;
+
+            // Create form for EFTPay widget (exactly like test page)
+            const form = document.createElement('form');
+            form.className = 'paymentWidgets';
+            form.setAttribute('data-brands', 'PRIVATE_LABEL');
+            form.action = '#';
+            form.method = 'POST';
+
+            // Add hidden input for resourcePath (will be populated by EFTPay)
+            const resourcePathInput = document.createElement('input');
+            resourcePathInput.type = 'hidden';
+            resourcePathInput.name = 'resourcePath';
+            form.appendChild(resourcePathInput);
+
+            // Handle form submission exactly like test page
+            form.onsubmit = (e) => {
+                e.preventDefault();
+                console.log('Form submitted');
+                console.log('Form data:', new FormData(form));
+
+                // Get resourcePath from form data
+                const formData = new FormData(form);
+                const resourcePath = formData.get('resourcePath') || resourcePathInput.value;
+
+                console.log('Resource path:', resourcePath);
+
+                if (resourcePath) {
+                    // Close the overlay first
+                    document.body.removeChild(overlay);
+                    // Then handle payment completion
+                    this.handleZimswitchPaymentCompletion(resourcePath, null);
+                } else {
+                    console.error('No resource path found in form submission');
+                    this.$swal.fire({
+                        title: 'Error',
+                        text: 'Payment data is missing. Please try again.',
+                        icon: 'error'
+                    });
+                }
+                return false;
+            };
+
+            // Assemble the container
+            container.appendChild(closeBtn);
+            container.appendChild(title);
+            container.appendChild(form);
+            overlay.appendChild(container);
+
+            // Add the overlay to the body
+            document.body.appendChild(overlay);
+
+            // Set required cookie for EFTPay (exactly like working pay.php)
+            document.cookie = "cookie_eftcorp=https://eftpaygateway.com/; SameSite=Strict; path=/";
+
+            // Configure EFTPay widget options (exactly like working pay.php)
+            window.wpwlOptions = {
+                style: "plain",
+                brandDetection: false,
+                showPlaceholders: false,
+                onReady: function () {
+                    console.log('EFTPay widget onReady called');
+
+                    // Function to apply ZimSwitch branding
+                    const applyZimSwitchBranding = () => {
+                        if (window.jQuery) {
+                            console.log('Applying ZimSwitch branding with jQuery');
+                            window.jQuery('.wpwl-group-brand').before("<img src='http://www.zimswitchonline.co.zw/wp-content/uploads/2022/06/favicon.1ee90efd.svg' width='200' style='vertical-align:middle;margin:50px 50px'></img>");
+                            window.jQuery('.wpwl-control-brand option[value="PRIVATE_LABEL"]').text("ZimSwitch");
+                            window.jQuery('.wpwl-label-cardNumber').text("ZimSwitch Card");
+                        } else {
+                            console.log('jQuery not available, using vanilla JS');
+                            // Fallback to vanilla JS
+                            const brandGroup = document.querySelector('.wpwl-group-brand');
+                            if (brandGroup) {
+                                const img = document.createElement('img');
+                                img.src = 'http://www.zimswitchonline.co.zw/wp-content/uploads/2022/06/favicon.1ee90efd.svg';
+                                img.width = 200;
+                                img.style.cssText = 'vertical-align:middle;margin:50px 50px';
+                                brandGroup.parentNode.insertBefore(img, brandGroup);
+                            }
+
+                            const brandSelect = document.querySelector('.wpwl-control-brand option[value="PRIVATE_LABEL"]');
+                            if (brandSelect) {
+                                brandSelect.textContent = "ZimSwitch";
+                            }
+
+                            const cardNumberLabel = document.querySelector('.wpwl-label-cardNumber');
+                            if (cardNumberLabel) {
+                                cardNumberLabel.textContent = "ZimSwitch Card";
+                            }
+                        }
+                    };
+
+                    // Load jQuery if not available
+                    if (!window.jQuery) {
+                        console.log('Loading jQuery...');
+                        const jqueryScript = document.createElement('script');
+                        jqueryScript.src = 'https://code.jquery.com/jquery-3.6.0.min.js';
+                        jqueryScript.onload = function() {
+                            console.log('jQuery loaded successfully');
+                            applyZimSwitchBranding();
+                        };
+                        jqueryScript.onerror = function() {
+                            console.log('jQuery failed to load, using vanilla JS');
+                            applyZimSwitchBranding();
+                        };
+                        document.head.appendChild(jqueryScript);
+                    } else {
+                        console.log('jQuery already available');
+                        applyZimSwitchBranding();
+                    }
+                }
+            };
+
+            // Add CSS animations and widget styling
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes slideIn {
+                    from { transform: translateY(-20px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+
+                /* EFTPay widget styling */
+                .paymentWidgets {
+                    min-height: 300px;
+                    padding: 20px;
+                }
+
+                .wpwl-form {
+                    background: transparent !important;
+                }
+
+                .wpwl-group {
+                    margin-bottom: 15px;
+                }
+
+                .wpwl-control {
+                    width: 100% !important;
+                    padding: 8px !important;
+                    border: 1px solid #ddd !important;
+                    border-radius: 4px !important;
+                    font-size: 14px !important;
+                }
+
+                .wpwl-button {
+                    background: #007bff !important;
+                    color: white !important;
+                    padding: 10px 20px !important;
+                    border: none !important;
+                    border-radius: 4px !important;
+                    cursor: pointer !important;
+                    font-size: 16px !important;
+                    width: 100% !important;
+                }
+
+                .wpwl-button:hover {
+                    background: #0056b3 !important;
+                }
+
+                .wpwl-label {
+                    font-weight: bold !important;
+                    margin-bottom: 5px !important;
+                    display: block !important;
+                }
+            `;
+            document.head.appendChild(style);
+
+                        // Add the EFTPay script (exactly like working pay.php)
+            const script = document.createElement('script');
+            script.src = `https://${checkoutUrl}${checkoutId}`;
+            script.setAttribute('crossorigin', 'anonymous');
+            script.async = true;
+
+            console.log('Loading EFTPay script:', script.src);
+            console.log('Checkout URL:', checkoutUrl);
+            console.log('Checkout ID:', checkoutId);
+
+            script.onload = () => {
+                console.log('EFTPay widget script loaded successfully');
+                this.isLoading = false;
+            };
+            script.onerror = (error) => {
+                console.error('Failed to load EFTPay widget script:', error);
+                console.error('Script URL that failed:', script.src);
+                this.isLoading = false;
+                this.$swal.fire({
+                    title: 'Error',
+                    text: 'Failed to load payment widget. Please try again.',
+                    icon: 'error'
+                });
+                // Remove overlay on error
+                if (document.body.contains(overlay)) {
+                    document.body.removeChild(overlay);
+                }
+            };
+            document.head.appendChild(script);
+
+            console.log('Displaying integrated EFTPay payment form with checkout ID:', checkoutId);
+        },
+
         /**
-         * Creates a payment form for Zimswitch using EFTPay
+         * Handles Zimswitch payment completion
+         * @param {string} resourcePath - The resource path from EFTPay
+         * @param {HTMLElement} overlay - The payment overlay to remove
+         */
+        async handleZimswitchPaymentCompletion(resourcePath, overlay) {
+            try {
+                // Show loading state
+                this.isLoading = true;
+
+                // Call Laravel backend to check payment status using resource path
+                const response = await axios.post('/api/v1/zimswitch/payment-status', {
+                    resourcePath: resourcePath,
+                    trace: this.trace
+                });
+
+                // Remove the overlay
+                if (overlay && overlay.parentNode) {
+                    document.body.removeChild(overlay);
+                }
+
+                if (response.data.success) {
+                    // Payment successful
+                    this.$swal.fire({
+                        title: 'Payment Successful!',
+                        text: 'Your payment has been processed successfully.',
+                        icon: 'success',
+                        confirmButtonText: 'Continue'
+                    }).then(() => {
+                        window.location.href = this.returnUrl;
+                    });
+                } else {
+                    // Payment failed
+                    this.$swal.fire({
+                        title: 'Payment Failed',
+                        text: response.data.message || 'Your payment could not be processed.',
+                        icon: 'error',
+                        confirmButtonText: 'Try Again'
+                    });
+                }
+            } catch (error) {
+                console.error('Error processing payment completion:', error);
+
+                // Remove the overlay
+                if (overlay && overlay.parentNode) {
+                    document.body.removeChild(overlay);
+                }
+
+                this.$swal.fire({
+                    title: 'Error',
+                    text: 'An error occurred while processing your payment.',
+                    icon: 'error',
+                    confirmButtonText: 'OK'
+                });
+            } finally {
+                this.isLoading = false;
+            }
+        },
+
+        /**
+         * Creates a payment form for Zimswitch using EFTPay (deprecated - keeping for compatibility)
          * @param {string} baseUrl - The base URL for the EFTPay API
          * @param {string} checkoutId - The checkout ID for the payment
          */

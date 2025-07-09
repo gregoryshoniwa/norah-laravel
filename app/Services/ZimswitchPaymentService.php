@@ -22,6 +22,7 @@ class ZimswitchPaymentService
 
     /**
      * Prepare a checkout for Zimswitch payment
+     * Creates checkout using cURL and returns data for Vue.js integration
      *
      * @param array $data
      * @return array
@@ -29,104 +30,183 @@ class ZimswitchPaymentService
     public function prepareCheckout($data)
     {
         try {
-            // Prepare request payload combining working cURL example with required documentation parameters
-            $payload = [
-                'entityId' => $this->entityId,
-                'amount' => $data['amount'],
-                'currency' => $data['currency'] ?? 'USD', // Get currency from data or default to USD
-                'paymentType' => 'DB', // Direct Debit
-                // Add integrity flag as shown in the working cURL command
-                'integrity' => 'true'
-            ];
-
-            // // Add transaction ID (required for transaction tracking)
-            // $payload['merchantTransactionId'] = $data['trace'] ?? (string) \Illuminate\Support\Str::uuid();
-
-            // // Add customer email (important for receipts and notifications)
-            // $payload['customer.email'] = $data['user'] ?? '';
-
-            // // Add billing information (required according to documentation)
-            // $payload['billing.street1'] = $data['billing_address'] ?? 'N/A';
-            // $payload['billing.city'] = $data['billing_city'] ?? 'N/A';
-            // $payload['billing.state'] = $data['billing_state'] ?? 'N/A';
-            // $payload['billing.country'] = 'ZW'; // Zimbabwe
-            // $payload['billing.postcode'] = $data['billing_zip'] ?? 'N/A';
-
-            // Add payment brand (specific to Zimswitch/Private Label)
-            if (!empty($this->paymentBrand)) {
-                $payload['customParameters[SHOPPER_payment_brand]'] = $this->paymentBrand;
+            // Load auth configuration like the working implementation
+            $authJsonPath = base_path('zimswitch/auth.json');
+            if (!file_exists($authJsonPath)) {
+                throw new \Exception('Authentication configuration file not found');
             }
 
-            // Add shopper result URL for redirect after payment (required)
-            $payload['shopperResultUrl'] = route('payment.callback');
+            $authConfig = json_decode(file_get_contents($authJsonPath), true);
+            if (!$authConfig) {
+                throw new \Exception('Invalid authentication configuration');
+            }
 
-            // Log request payload for debugging
-            \Illuminate\Support\Facades\Log::debug('Zimswitch payment request', [
-                'url' => $this->baseUrl . '/v1/checkouts',
-                'payload' => $payload
+            // Prepare checkout request using cURL exactly like working implementation
+            $amount = $data['amount'] ?? '1.00';
+            $currency = $data['currency'] ?? 'USD';
+            $paymode = config('app.env') === 'production' ? 'LIVE' : 'TEST_EXTERNAL';
+
+            // Build request data exactly like working pay.php
+            $requestData = "entityId=" . $authConfig['entityId'] .
+                          "&amount=" . $amount .
+                          "&currency=" . $currency .
+                          "&paymentType=" . $authConfig['payType'];
+
+            if ($paymode == "TEST_INTERNAL") {
+                $requestData .= "&testMode=INTERNAL";
+            } else if ($paymode == "TEST_EXTERNAL") {
+                $requestData .= "&testMode=EXTERNAL";
+            }
+
+            // Make cURL request exactly like working implementation
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $authConfig['oppwaUrl']);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array($authConfig['authorizationBearer']));
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $requestData);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+            $responseData = curl_exec($ch);
+
+            if (curl_errno($ch)) {
+                $error = curl_error($ch);
+                curl_close($ch);
+                throw new \Exception('cURL Error: ' . $error);
+            }
+
+            curl_close($ch);
+
+            // Parse response
+            $decodedData = json_decode($responseData, true);
+
+            // Debug logging
+            Log::info('Zimswitch checkout creation response', [
+                'raw_response' => $responseData,
+                'decoded_response' => $decodedData,
+                'request_data' => $requestData,
+                'auth_config' => array_merge($authConfig, ['authorizationBearer' => '[HIDDEN]'])
             ]);
 
-            // Make the API request with detailed error handling
-            try {
-                // Convert payload to URL-encoded format (matching exactly how cURL sends it)
-                $encodedPayload = http_build_query($payload);
-
-                // Use the withBody method to ensure proper encoding
-                $response = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $this->authToken,
-                    'Content-Type' => 'application/x-www-form-urlencoded'
-                ])->withBody(
-                    $encodedPayload, 'application/x-www-form-urlencoded'
-                )->post($this->baseUrl . '/v1/checkouts');
-
-                // Log the raw response for debugging
-                \Illuminate\Support\Facades\Log::debug('Zimswitch payment response', [
-                    'status' => $response->status(),
-                    'body' => $response->body()
+            if (!$decodedData || !isset($decodedData['id'])) {
+                Log::error('Zimswitch checkout creation failed', [
+                    'response' => $responseData,
+                    'decoded' => $decodedData,
+                    'request_data' => $requestData
                 ]);
-
-                $responseData = $response->json();
-
-                // Check if the response contains a checkout ID (success case)
-                if (isset($responseData['id'])) {
-                    return [
-                        'success' => true,
-                        'checkoutId' => $responseData['id'],
-                        'trace' => $data['trace']
-                    ];
-                }
-
-                // If we got a response but no checkout ID, log it and return error
-                \Illuminate\Support\Facades\Log::error('Zimswitch payment error - No checkout ID', [
-                    'responseData' => $responseData
-                ]);
-
-                return [
-                    'success' => false,
-                    'error' => true,
-                    'message' => $responseData['result']['description'] ?? 'Failed to prepare checkout',
-                    'responseData' => $responseData
-                ];
-            } catch (\Exception $e) {
-                // Log detailed exception information
-                \Illuminate\Support\Facades\Log::error('Zimswitch payment exception', [
-                    'message' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
-
-                return [
-                    'success' => false,
-                    'error' => true,
-                    'message' => 'Exception during checkout preparation: ' . $e->getMessage(),
-                    'exception' => true
-                ];
+                throw new \Exception('Failed to create checkout: ' . ($decodedData['result']['description'] ?? 'Unknown error'));
             }
+
+            // Return data for Vue.js integration
+            return [
+                'success' => true,
+                'checkoutId' => $decodedData['id'],
+                'trace' => $data['trace'] ?? (string) \Illuminate\Support\Str::uuid(),
+                'paymentUrl' => $authConfig['baseUrl'] ?? $authConfig['checkoutUrl'],
+                'authConfig' => [
+                    'checkoutUrl' => $authConfig['checkoutUrl'],
+                    'baseUrl' => $authConfig['baseUrl'],
+                ],
+                'integrateInVue' => true, // Flag to tell frontend to integrate in Vue.js
+                'message' => 'Checkout created successfully',
+                'amount' => $amount,
+                'currency' => $currency,
+                'paymode' => $paymode
+            ];
         } catch (\Exception $e) {
             Log::error('Zimswitch payment error: ' . $e->getMessage());
             return [
                 'success' => false,
                 'error' => true,
                 'message' => 'An error occurred while processing your payment: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Check payment status using resource path
+     * Uses cURL exactly like the working implementation
+     *
+     * @param string $resourcePath
+     * @return array
+     */
+    public function checkPaymentStatus($resourcePath)
+    {
+        try {
+            // Load auth configuration
+            $authJsonPath = base_path('zimswitch/auth.json');
+            if (!file_exists($authJsonPath)) {
+                throw new \Exception('Authentication configuration file not found');
+            }
+
+            $authConfig = json_decode(file_get_contents($authJsonPath), true);
+            if (!$authConfig) {
+                throw new \Exception('Invalid authentication configuration');
+            }
+
+            // Build URL for payment status check exactly like working implementation
+            $url = $authConfig['baseUrl'] . $resourcePath;
+            $url .= "?entityId=" . $authConfig['entityId'];
+
+            // Make cURL request exactly like working pay_result.php
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array($authConfig['authorizationBearer']));
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+            $responseData = curl_exec($ch);
+
+            if (curl_errno($ch)) {
+                $error = curl_error($ch);
+                curl_close($ch);
+                throw new \Exception('cURL Error: ' . $error);
+            }
+
+            curl_close($ch);
+
+            // Parse response
+            $decodedData = json_decode($responseData, true);
+
+            if (!$decodedData) {
+                throw new \Exception('Invalid response from payment gateway');
+            }
+
+            // Check payment status exactly like working implementation
+            $resultCode = $decodedData['result']['code'] ?? '';
+            $resultDescription = $decodedData['result']['description'] ?? '';
+
+            // Success codes pattern from working implementation
+            $successPattern = '/^(000\.000\.|000\.100\.1|000\.[36])/';
+            $isSuccess = preg_match($successPattern, $resultCode);
+
+            Log::info('Zimswitch payment status check', [
+                'resourcePath' => $resourcePath,
+                'resultCode' => $resultCode,
+                'resultDescription' => $resultDescription,
+                'isSuccess' => $isSuccess,
+                'fullResponse' => $decodedData
+            ]);
+
+            return [
+                'success' => (bool)$isSuccess,
+                'resultCode' => $resultCode,
+                'resultDescription' => $resultDescription,
+                'amount' => $decodedData['amount'] ?? '',
+                'currency' => $decodedData['currency'] ?? '',
+                'transactionId' => $decodedData['id'] ?? '',
+                'timestamp' => $decodedData['timestamp'] ?? '',
+                'paymentBrand' => $decodedData['paymentBrand'] ?? '',
+                'message' => $isSuccess ? 'Payment successful' : 'Payment failed: ' . $resultDescription
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Zimswitch payment status check error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => true,
+                'message' => 'An error occurred while checking payment status: ' . $e->getMessage()
             ];
         }
     }

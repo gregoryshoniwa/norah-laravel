@@ -96,6 +96,8 @@ Route::post('/transactions/omari-otp', [TransactionController::class, 'processOm
 Route::post('/transactions/process', [TransactionController::class, 'processTransaction']);
 Route::post('/transactions/cancel', [TransactionController::class, 'cancelTransaction']);
 Route::post('/transactions/status', [TransactionController::class, 'checkTransactionStatus']);
+Route::post('/zimswitch/payment-status', [TransactionController::class, 'checkZimswitchPaymentStatus']);
+Route::post('/zimswitch/test-checkout', [TransactionController::class, 'testZimswitchCheckout']);
 
 
 Route::post('/merchant-sign-in', [AuthController::class, 'merchantSignIn']);

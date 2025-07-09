@@ -31,9 +31,9 @@ class TransactionController extends Controller
 
 
     public function __construct(
-        InnBucksPaymentService $innbucksService, 
-        EcoCashPaymentService $ecocashService, 
-        OmariPaymentService $omariService, 
+        InnBucksPaymentService $innbucksService,
+        EcoCashPaymentService $ecocashService,
+        OmariPaymentService $omariService,
         ZimswitchPaymentService $zimswitchService,
         IVeriPaymentService $iveriService
     )
@@ -73,7 +73,7 @@ class TransactionController extends Controller
                 $trace = Str::uuid()->toString();
                 $data = $request->all();
                 $data['trace'] = $trace;
-                
+
                 $response = $this->zimswitchService->prepareCheckout($data);
                 $reference = $response['checkoutId'] ?? null;  // Use the checkout ID as reference
                 $requiresOtp = false;  // No OTP required for Zimswitch
@@ -83,13 +83,13 @@ class TransactionController extends Controller
                 $trace = Str::uuid()->toString();
                 $data = $request->all();
                 $data['trace'] = $trace;
-                
+
                 // Process the card payment through iVeri
                 $response = $this->iveriService->processPayment($data);
                 $reference = $response['reference'] ?? null;
                 $requiresOtp = false;  // May change based on 3D Secure requirements
                 $hasError = isset($response['error']) && $response['error'] === true;
-                
+
                 // Check for direct 3D Secure redirect URL
                 if (isset($response['redirectUrl'])) {
                     return response()->json([
@@ -100,7 +100,7 @@ class TransactionController extends Controller
                         'returnUrl' => url('/payment/complete?status=success')
                     ]);
                 }
-                
+
                 // Check for ACS form data that needs to be posted to 3D Secure
                 if (isset($response['acsUrl']) && isset($response['acsPayload'])) {
                     return response()->json([
@@ -149,9 +149,9 @@ class TransactionController extends Controller
             $transaction->save();
 
             // Handle payment errors for Omari or Zimswitch
-            if (($paymentMethod === 'OMARI' && isset($hasError) && $hasError) || 
+            if (($paymentMethod === 'OMARI' && isset($hasError) && $hasError) ||
                 ($paymentMethod === 'ZIMSWITCH' && isset($response['error']) && $response['error'] === true)) {
-                
+
                 // Update transaction with failed status
                 $transaction->update([
                     'status' => 'FAILED',
@@ -171,20 +171,24 @@ class TransactionController extends Controller
                 ]);
             }
 
-            // Special response for Zimswitch to facilitate redirect to EFTPay
-            if ($paymentMethod === 'ZIMSWITCH' && isset($response['checkoutId'])) {
+            // Special response for Zimswitch integrated in Vue.js
+            if ($paymentMethod === 'ZIMSWITCH' && isset($response['success']) && $response['success']) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Zimswitch checkout prepared successfully.',
                     'trace' => $transaction->trace,
                     'returnUrl' => $returnUrl,
                     'checkoutId' => $response['checkoutId'],
-                    // Direct URL to the payment page
-                    'paymentUrl' => config('services.zimswitch.url'),
-                    'shouldPoll' => false
+                    'paymentUrl' => $response['paymentUrl'],
+                    'authConfig' => $response['authConfig'],
+                    'integrateInVue' => true, // Flag to tell frontend to integrate in Vue.js
+                    'shouldPoll' => false,
+                    'amount' => $response['amount'],
+                    'currency' => $response['currency'],
+                    'paymode' => $response['paymode']
                 ]);
             }
-            
+
             // Standard response for other payment methods
             return response()->json([
                 'success' => true,
@@ -251,11 +255,11 @@ class TransactionController extends Controller
             } elseif ($transaction->payment_method === 'VISA_MASTER') {
                 // For iVeri, check the payment status
                 $inquiryResponse = $this->iveriService->checkPaymentStatus($transaction->reference);
-                
+
                 // Check if the payment has been finalized
                 $isFinal = isset($inquiryResponse['success']) &&
                           ($inquiryResponse['success'] === true || $inquiryResponse['error'] === true);
-                          
+
                 // If payment was successful but transaction not yet updated
                 if ($inquiryResponse['success'] === true && $transaction->status !== 'COMPLETED') {
                     $transaction->update([
@@ -265,7 +269,7 @@ class TransactionController extends Controller
                         'type' => 'PAYMENT'
                     ]);
                 }
-                
+
                 // If payment failed but transaction not yet updated
                 if ($inquiryResponse['error'] === true && $transaction->status !== 'FAILED') {
                     $transaction->update([
@@ -279,10 +283,10 @@ class TransactionController extends Controller
             } elseif ($transaction->payment_method === 'OMARI') {
                 // For Omari, first check the current transaction data
                 $transactionData = json_decode($transaction->response, true);
-                
+
                 // Always query the payment status from Omari service
                 $inquiryResponse = $this->omariService->inquirePaymentRequest($transaction->reference);
-                
+
                 // Check if the inquiry response indicates payment success or failure
                 if (isset($inquiryResponse['status'])) {
                     if ($inquiryResponse['status'] === 'Success') {
@@ -291,7 +295,7 @@ class TransactionController extends Controller
                     } else if ($inquiryResponse['status'] === 'Failed') {
                         // Payment failed
                         $isFinal = true;
-                        
+
                         // Update transaction with failure details
                         if ($transaction->status !== 'FAILED') {
                             $transaction->update([
@@ -311,13 +315,13 @@ class TransactionController extends Controller
                         (isset($transactionData['paymentResponse']) &&
                          isset($transactionData['paymentResponse']['error']) &&
                          $transactionData['paymentResponse']['error'] === true)) {
-    
+
                         // We already have an error from a previous attempt
                         $errorMessage = $transactionData['message'] ??
                                         $transactionData['paymentResponse']['message'] ??
                                         'Payment failed';
                         $responseCode = $transactionData['paymentResponse']['responseCode'] ?? '01';
-    
+
                         // Update transaction status if not already failed
                         if ($transaction->status !== 'FAILED') {
                             $transaction->update([
@@ -327,7 +331,7 @@ class TransactionController extends Controller
                                 'type' => 'PAYMENT'
                             ]);
                         }
-    
+
                         $inquiryResponse = $transactionData['paymentResponse'] ?? $transactionData;
                         $isFinal = true;
                     } else if (isset($transactionData['otp']) && isset($transactionData['otpReference'])) {
@@ -337,7 +341,7 @@ class TransactionController extends Controller
                         // Still waiting for OTP from user
                         $isFinal = false;
                         $inquiryResponse = $transactionData;
-                        
+
                         // Return a response indicating we need OTP
                         return response()->json([
                             'success' => true,
@@ -1441,35 +1445,35 @@ class TransactionController extends Controller
         // Get the checkout ID from the request (provided by EFTPay in the redirect)
         $checkoutId = $request->query('id');
         $resourcePath = $request->query('resourcePath');
-        
+
         if (!$checkoutId) {
             return response()->view('payment.error', [
                 'message' => 'Payment checkout ID is missing.'
             ]);
         }
-        
+
         try {
             // Use the checkout ID to get the payment status
             $paymentStatus = $this->zimswitchService->getPaymentStatus($checkoutId);
-            
+
             // Find the transaction associated with this payment
             // Note: The merchant transaction ID is stored in our trace field
             $transaction = Transaction::where('payment_method', 'ZIMSWITCH')
                             ->whereIn('type', ['CONFIRM'])
                             ->orderBy('created_at', 'desc')
                             ->first();
-            
+
             if (!$transaction) {
                 return response()->view('payment.error', [
                     'message' => 'Transaction not found.'
                 ]);
             }
-            
+
             // Update transaction with the payment status
             if ($paymentStatus['success']) {
                 // Payment was successful, update transaction to completed
                 $this->finalizeSuccessfulTransaction($transaction, $paymentStatus['responseData']);
-                
+
                 // Redirect to success page or merchant return URL
                 return redirect()->to('/payment/success?reference=' . $transaction->reference);
             } else {
@@ -1480,17 +1484,140 @@ class TransactionController extends Controller
                     'error_message' => $paymentStatus['message'] ?? 'Payment failed',
                     'response' => json_encode($paymentStatus['responseData'])
                 ]);
-                
+
                 // Redirect to failure page or merchant return URL
                 return redirect()->to('/payment/failed?reference=' . $transaction->reference);
             }
         } catch (\Exception $e) {
             // Log the error
             Log::error('Zimswitch payment callback error: ' . $e->getMessage());
-            
+
             return response()->view('payment.error', [
                 'message' => 'An error occurred while processing your payment: ' . $e->getMessage()
             ]);
+        }
+    }
+
+    /**
+     * Check Zimswitch payment status using resource path
+     * Called by Vue.js component after payment completion
+     */
+    public function checkZimswitchPaymentStatus(Request $request)
+    {
+        try {
+            $request->validate([
+                'resourcePath' => 'required|string',
+                'trace' => 'required|string'
+            ]);
+
+            $resourcePath = $request->input('resourcePath');
+            $trace = $request->input('trace');
+
+            // Use the Zimswitch service to check payment status
+            $paymentStatus = $this->zimswitchService->checkPaymentStatus($resourcePath);
+
+            if ($paymentStatus['success']) {
+                // Find the transaction by trace
+                $transaction = Transaction::where('trace', $trace)->first();
+
+                if ($transaction) {
+                    // Update transaction status
+                    $transaction->update([
+                        'status' => 'completed',
+                        'payment_response' => json_encode($paymentStatus),
+                        'transaction_id' => $paymentStatus['transactionId'] ?? null,
+                        'updated_at' => now()
+                    ]);
+
+                    Log::info('Zimswitch payment completed successfully', [
+                        'trace' => $trace,
+                        'transaction_id' => $transaction->id,
+                        'amount' => $paymentStatus['amount'],
+                        'currency' => $paymentStatus['currency']
+                    ]);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Payment completed successfully',
+                        'transaction' => [
+                            'id' => $transaction->id,
+                            'trace' => $transaction->trace,
+                            'amount' => $transaction->amount,
+                            'currency' => $transaction->currency,
+                            'status' => $transaction->status,
+                            'payment_method' => $transaction->payment_method
+                        ]
+                    ]);
+                } else {
+                    Log::warning('Transaction not found for Zimswitch payment', [
+                        'trace' => $trace,
+                        'resourcePath' => $resourcePath
+                    ]);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Payment completed but transaction not found',
+                        'paymentStatus' => $paymentStatus
+                    ]);
+                }
+            } else {
+                // Payment failed
+                Log::warning('Zimswitch payment failed', [
+                    'trace' => $trace,
+                    'resourcePath' => $resourcePath,
+                    'error' => $paymentStatus['message']
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $paymentStatus['message'],
+                    'error' => true
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Zimswitch payment status check error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to check payment status',
+                'error' => true
+            ], 500);
+        }
+    }
+
+    /**
+     * Test Zimswitch checkout creation directly
+     * This is a debug endpoint to test checkout creation without full transaction flow
+     */
+    public function testZimswitchCheckout(Request $request)
+    {
+        try {
+            $amount = $request->input('amount', '1.00');
+            $currency = $request->input('currency', 'USD');
+
+            // Test checkout creation directly
+            $result = $this->zimswitchService->prepareCheckout([
+                'amount' => $amount,
+                'currency' => $currency,
+                'trace' => 'TEST_' . time()
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Test checkout creation completed',
+                'result' => $result,
+                'test_script_url' => isset($result['authConfig']) && isset($result['checkoutId'])
+                    ? 'https://' . $result['authConfig']['checkoutUrl'] . $result['checkoutId']
+                    : 'N/A'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Zimswitch test checkout error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Test checkout failed: ' . $e->getMessage(),
+                'error' => true
+            ], 500);
         }
     }
 }

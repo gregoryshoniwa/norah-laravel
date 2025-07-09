@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Donate</title>
+    <link rel="stylesheet" href="mystyles.css" />
+    <link rel="icon" type="image/x-icon" href="/favicon.png">
+</head>
+
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="column">
+                <img src="Logo.png" alt=" logo" width="200" height="100">
+
+
+                <p>
+                     Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+                    et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+                    aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in
+                    voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non
+                    proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+                </p>
+            </div>
+
+            <div class="column">
+                <h1>Donate</h1>
+                <form action="./pay.php" method="post">
+                    <label for="amount">Amount:</label>
+                    <input id="amount" type="number" name="amount" value="1.00" size="12"
+                        step="1" /><br /><br />
+
+                    <label for="currency">Currency:</label>
+                    <select id="currency" name="currency">
+					 <option value="ZWG">ZWG</option>
+                       <option value="USD">USD</option>        
+                    </select><br /><br />
+
+                    <label for="paysource">Payment Method:</label>
+                    <select id="paysource" name="paysource" style="padding: 5px">
+                     <option value="ZIMSWITCH">Zimswitch</option>
+					  
+
+                    </select><br /><br />
+
+                    <label for="paymode">Payment Mode:</label>
+                    <select id="paymode" name="paymode" style="padding: 5px">
+                        <option value="TEST_EXTERNAL">TEST:EXTERNAL</option>
+						 <option value="TEST_INTERNAL">TEST:INTERNAL</option>
+                    </select><br /><br />
+
+                    <input type="submit" name="Submit" value="PAY" />
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
