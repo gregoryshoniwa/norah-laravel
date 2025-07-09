@@ -1482,46 +1482,17 @@ export default {
                 font-size: 18px;
             `;
 
-            // Create form for EFTPay widget (exactly like test page)
+            // Create form for EFTPay widget (exactly like working pay.php)
             const form = document.createElement('form');
             form.className = 'paymentWidgets';
             form.setAttribute('data-brands', 'PRIVATE_LABEL');
-            form.action = '#';
+            // Set action to the result page exactly like working implementation
+            form.action = '/pay_result.php';
             form.method = 'POST';
 
-            // Add hidden input for resourcePath (will be populated by EFTPay)
-            const resourcePathInput = document.createElement('input');
-            resourcePathInput.type = 'hidden';
-            resourcePathInput.name = 'resourcePath';
-            form.appendChild(resourcePathInput);
-
-            // Handle form submission exactly like test page
-            form.onsubmit = (e) => {
-                e.preventDefault();
-                console.log('Form submitted');
-                console.log('Form data:', new FormData(form));
-
-                // Get resourcePath from form data
-                const formData = new FormData(form);
-                const resourcePath = formData.get('resourcePath') || resourcePathInput.value;
-
-                console.log('Resource path:', resourcePath);
-
-                if (resourcePath) {
-                    // Close the overlay first
-                    document.body.removeChild(overlay);
-                    // Then handle payment completion
-                    this.handleZimswitchPaymentCompletion(resourcePath, null);
-                } else {
-                    console.error('No resource path found in form submission');
-                    this.$swal.fire({
-                        title: 'Error',
-                        text: 'Payment data is missing. Please try again.',
-                        icon: 'error'
-                    });
-                }
-                return false;
-            };
+            // Don't intercept form submission - let EFTPay handle it naturally
+            // The EFTPay widget will add resourcePath and submit to pay_result.php
+            // pay_result.php will handle the payment status check
 
             // Assemble the container
             container.appendChild(closeBtn);

@@ -5,31 +5,67 @@
 $filePath = file_get_contents('../zimswitch/auth.json');
 $authData = json_decode($filePath, true);
 
-$paymentResult = null;
-$errorMessage = null;
-
-if (isset($_POST['resourcePath'])) {
-    $resourcePath = $_POST['resourcePath'];
-
-    // Get payment status using cURL exactly like working implementation
-    $url = $authData['baseUrl'] . $resourcePath;
-    $url .= "?entityId=" . $authData['entityId'];
+function request($bearer, $resourcePath, $baseUrl, $entityID) {
+    $url = $baseUrl . $resourcePath;
+    $url .= "?entityId=" . $entityID;
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt(
+        $ch,
+        CURLOPT_HTTPHEADER,
+        array($bearer)
+    );
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array($authData['authorizationBearer']));
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
     $responseData = curl_exec($ch);
-
     if (curl_errno($ch)) {
-        $errorMessage = curl_error($ch);
-    } else {
-        $paymentResult = json_decode($responseData, true);
+        return curl_error($ch);
     }
     curl_close($ch);
+    return $responseData;
+}
+
+$paymentResult = null;
+$errorMessage = null;
+
+// Working implementation expects resourcePath via GET (how EFTPay sends it)
+if (isset($_GET['resourcePath'])) {
+    $resourcePath = $_GET['resourcePath'];
+    $responseData = request($authData['authorizationBearer'], $resourcePath, $authData['baseUrl'], $authData['entityId']);
+
+    $result = json_decode($responseData);
+
+    if ($result) {
+        $resId = $result->{'id'};
+        $resType = $result->{'paymentType'};
+        $resBrand = $result->{'paymentBrand'};
+        $resAmount = $result->{'amount'};
+        $resCurrency = $result->{'currency'};
+        $resResultDescription = $result->{'result'}->{'description'};
+        $resResultCode = $result->{'result'}->{'code'};
+        $resNdc = $result->{'ndc'};
+        $resDescriptor = $result->{'descriptor'};
+        $resResultDetailsExtendedDescription = $result->{'resultDetails'}->{'ExtendedDescription'} ?? '';
+
+        // Convert to array format for compatibility with existing template
+        $paymentResult = [
+            'id' => $resId,
+            'paymentType' => $resType,
+            'paymentBrand' => $resBrand,
+            'amount' => $resAmount,
+            'currency' => $resCurrency,
+            'result' => [
+                'description' => $resResultDescription,
+                'code' => $resResultCode
+            ]
+        ];
+    } else {
+        $errorMessage = "Failed to parse payment response";
+    }
+} else {
+    $errorMessage = "No payment information received";
 }
 ?>
 <!DOCTYPE html>
@@ -84,47 +120,33 @@ if (isset($_POST['resourcePath'])) {
                 <h3>Error</h3>
                 <p><?php echo htmlspecialchars($errorMessage); ?></p>
             </div>
-        <?php elseif ($paymentResult): ?>
+        <?php elseif (isset($paymentResult)): ?>
             <?php
+            // Use the same success pattern as working implementation
             $isSuccess = isset($paymentResult['result']['code']) &&
-                        in_array($paymentResult['result']['code'], [
-                            '000.100.110', // Transaction successfully processed
-                            '000.100.111', // Transaction successfully processed, but risk management review required
-                            '000.100.112', // Transaction successfully processed, but risk management review required
-                            '000.000.000'  // Transaction successfully processed
-                        ]);
+                        preg_match("/^(000\.000\.|000\.100\.1|000\.[36])/", $paymentResult['result']['code']);
             ?>
 
             <?php if ($isSuccess): ?>
-                <div class="success">
-                    <h3>✅ Payment Successful!</h3>
-                    <p>Your payment has been processed successfully.</p>
-                    <p><strong>Transaction ID:</strong> <?php echo htmlspecialchars($paymentResult['id'] ?? 'N/A'); ?></p>
-                    <p><strong>Result:</strong> <?php echo htmlspecialchars($paymentResult['result']['description'] ?? 'Success'); ?></p>
-                </div>
+                <h3 class="success">Transaction successful</h3>
+                <p>Reference Number: <?php echo htmlspecialchars($paymentResult['id']); ?></p>
+                <p>Brand: <?php echo htmlspecialchars($paymentResult['paymentBrand']); ?></p>
+                <p>Amount: <?php echo htmlspecialchars($paymentResult['amount'] . ' ' . $paymentResult['currency'] . ' (' . $paymentResult['paymentType'] . ')'); ?></p>
+                <h3>Thank you for your donation!</h3>
+                <button onclick="location.href='/';" class="button">HOME</button>
             <?php else: ?>
-                <div class="error">
-                    <h3>❌ Payment Failed</h3>
-                    <p>Your payment could not be processed.</p>
-                    <p><strong>Error:</strong> <?php echo htmlspecialchars($paymentResult['result']['description'] ?? 'Unknown error'); ?></p>
-                    <p><strong>Code:</strong> <?php echo htmlspecialchars($paymentResult['result']['code'] ?? 'N/A'); ?></p>
-                </div>
+                <h3 class="error">Transaction failed</h3>
+                <p>Please try again later or contact your bank and share the following information with them if the problem persists:</p>
+                <p>Error code: <?php echo htmlspecialchars($paymentResult['result']['code']); ?></p>
+                <p>Description: <?php echo htmlspecialchars($paymentResult['result']['description']); ?></p>
+                <p>Brand: <?php echo htmlspecialchars($paymentResult['paymentBrand']); ?></p>
+                <p>Transaction type: <?php echo htmlspecialchars($paymentResult['paymentType']); ?></p>
+                <button onclick="location.href='/';" class="button">HOME</button>
             <?php endif; ?>
-
-            <details style="margin-top: 20px;">
-                <summary>Technical Details</summary>
-                <pre style="text-align: left; background: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 10px;">
-<?php echo json_encode($paymentResult, JSON_PRETTY_PRINT); ?>
-                </pre>
-            </details>
         <?php else: ?>
-            <div class="error">
-                <h3>No Payment Data</h3>
-                <p>No payment information was received.</p>
-            </div>
+            <p class="error">Internal error. Contact your system administrator.</p>
+            <button onclick="location.href='/';" class="button">HOME</button>
         <?php endif; ?>
-
-        <button onclick="window.close();" class="button">Close Window</button>
     </div>
 </body>
 </html>
