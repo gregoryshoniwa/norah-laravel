@@ -30,39 +30,61 @@ function request($bearer, $resourcePath, $baseUrl, $entityID) {
 $paymentResult = null;
 $errorMessage = null;
 
-// Working implementation expects resourcePath via GET (how EFTPay sends it)
-if (isset($_GET['resourcePath'])) {
+// Check if this is a refresh/direct access without payment data
+$isDirectAccess = empty($_GET) && empty($_POST);
+$hasValidResourcePath = isset($_GET['resourcePath']) && !empty($_GET['resourcePath']);
+
+if ($isDirectAccess) {
+    // User refreshed or accessed directly - show session expired message
+    $errorMessage = "session_expired";
+} elseif ($hasValidResourcePath) {
+    // Valid payment callback - process normally
     $resourcePath = $_GET['resourcePath'];
-    $responseData = request($authData['authorizationBearer'], $resourcePath, $authData['baseUrl'], $authData['entityId']);
 
-    $result = json_decode($responseData);
+    try {
+        $responseData = request($authData['authorizationBearer'], $resourcePath, $authData['baseUrl'], $authData['entityId']);
 
-    if ($result) {
-        $resId = $result->{'id'};
-        $resType = $result->{'paymentType'};
-        $resBrand = $result->{'paymentBrand'};
-        $resAmount = $result->{'amount'};
-        $resCurrency = $result->{'currency'};
-        $resResultDescription = $result->{'result'}->{'description'};
-        $resResultCode = $result->{'result'}->{'code'};
-        $resNdc = $result->{'ndc'};
-        $resDescriptor = $result->{'descriptor'};
-        $resResultDetailsExtendedDescription = $result->{'resultDetails'}->{'ExtendedDescription'} ?? '';
+        if ($responseData && !is_string($responseData)) {
+            // If responseData is an error string from curl_error
+            $errorMessage = "Connection error: " . $responseData;
+        } else {
+            $result = json_decode($responseData);
 
-        // Convert to array format for compatibility with existing template
-        $paymentResult = [
-            'id' => $resId,
-            'paymentType' => $resType,
-            'paymentBrand' => $resBrand,
-            'amount' => $resAmount,
-            'currency' => $resCurrency,
-            'result' => [
-                'description' => $resResultDescription,
-                'code' => $resResultCode
-            ]
-        ];
-    } else {
-        $errorMessage = "Failed to parse payment response";
+            if ($result && isset($result->id)) {
+                // Safely extract properties with null coalescing
+                $resId = $result->id ?? 'N/A';
+                $resType = $result->paymentType ?? 'N/A';
+                $resBrand = $result->paymentBrand ?? 'N/A';
+                $resAmount = $result->amount ?? '0.00';
+                $resCurrency = $result->currency ?? 'USD';
+                $resResultDescription = $result->result->description ?? 'Unknown status';
+                $resResultCode = $result->result->code ?? '999.999.999';
+
+                // Convert to array format for compatibility with existing template
+                $paymentResult = [
+                    'id' => $resId,
+                    'paymentType' => $resType,
+                    'paymentBrand' => $resBrand,
+                    'amount' => $resAmount,
+                    'currency' => $resCurrency,
+                    'result' => [
+                        'description' => $resResultDescription,
+                        'code' => $resResultCode
+                    ]
+                ];
+            } else {
+                // Check if the response contains an error message about expired session
+                $responseArray = json_decode($responseData, true);
+                if (isset($responseArray['result']['description']) &&
+                    strpos($responseArray['result']['description'], 'No payment session found') !== false) {
+                    $errorMessage = "session_expired";
+                } else {
+                    $errorMessage = "Invalid payment response received";
+                }
+            }
+        }
+    } catch (Exception $e) {
+        $errorMessage = "Error processing payment: " . $e->getMessage();
     }
 } else {
     $errorMessage = "No payment information received";
@@ -187,10 +209,31 @@ if (isset($_GET['resourcePath'])) {
             ?>
 
             <!-- Header with Status -->
-            <div class="p-6 <?php echo $isSuccess ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-pink-600'; ?> text-white">
+            <div class="p-6 <?php
+                if ($errorMessage === "session_expired") {
+                    echo 'bg-gradient-to-r from-yellow-500 to-orange-600';
+                } elseif ($isSuccess) {
+                    echo 'bg-gradient-to-r from-green-500 to-emerald-600';
+                } else {
+                    echo 'bg-gradient-to-r from-red-500 to-pink-600';
+                }
+            ?> text-white">
                 <div class="flex items-center justify-center mb-4">
-                    <div class="w-16 h-16 <?php echo $isSuccess ? 'success-icon' : 'error-icon'; ?> rounded-full flex items-center justify-center animate-bounce-in">
-                        <?php if ($isSuccess): ?>
+                    <div class="w-16 h-16 <?php
+                        if ($errorMessage === "session_expired") {
+                            echo 'bg-yellow-600';
+                        } elseif ($isSuccess) {
+                            echo 'success-icon bg-green-600';
+                        } else {
+                            echo 'error-icon bg-red-600';
+                        }
+                    ?> rounded-full flex items-center justify-center animate-bounce-in">
+                        <?php if ($errorMessage === "session_expired"): ?>
+                            <!-- Session Expired Clock Icon -->
+                            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        <?php elseif ($isSuccess): ?>
                             <!-- Success Checkmark -->
                             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
@@ -204,8 +247,10 @@ if (isset($_GET['resourcePath'])) {
                     </div>
                 </div>
 
-                <h1 class="text-2xl font-bold text-center text-white mb-2">
-                    <?php if ($errorMessage): ?>
+                                <h1 class="text-2xl font-bold text-center text-white mb-2">
+                    <?php if ($errorMessage === "session_expired"): ?>
+                        Session Expired
+                    <?php elseif ($errorMessage): ?>
                         System Error
                     <?php elseif ($isSuccess): ?>
                         Payment Successful!
@@ -215,7 +260,9 @@ if (isset($_GET['resourcePath'])) {
                 </h1>
 
                 <p class="text-center text-white/90 text-sm">
-                    <?php if ($errorMessage): ?>
+                    <?php if ($errorMessage === "session_expired"): ?>
+                        This payment session is no longer available
+                    <?php elseif ($errorMessage): ?>
                         An error occurred processing your payment
                     <?php elseif ($isSuccess): ?>
                         Your transaction has been completed successfully
@@ -227,8 +274,26 @@ if (isset($_GET['resourcePath'])) {
 
             <!-- Payment Details -->
             <div class="p-6 space-y-4">
-                <?php if ($errorMessage): ?>
-                    <!-- Error Message -->
+                <?php if ($errorMessage === "session_expired"): ?>
+                    <!-- Session Expired Message -->
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 text-yellow-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                            <div>
+                                <h3 class="text-sm font-medium text-yellow-800">Session Expired</h3>
+                                <p class="text-sm text-yellow-700 mt-1">This payment session has expired or is no longer valid.</p>
+                            </div>
+                        </div>
+                        <div class="mt-4 p-3 bg-yellow-100 rounded-md">
+                            <p class="text-sm text-yellow-800">
+                                <strong>What happened?</strong> Payment sessions expire after 30 minutes for security reasons. If you completed a payment, it may have already been processed.
+                            </p>
+                        </div>
+                    </div>
+                <?php elseif ($errorMessage): ?>
+                    <!-- Other Error Messages -->
                     <div class="bg-red-50 border border-red-200 rounded-lg p-4">
                         <div class="flex items-center">
                             <svg class="w-5 h-5 text-red-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
@@ -320,31 +385,35 @@ if (isset($_GET['resourcePath'])) {
             <!-- Action Buttons -->
             <div class="px-6 pb-6">
                 <div class="flex space-x-3">
-                    <button
-                        onclick="location.href='/'"
-                        class="flex-1 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary-dark hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 shadow-lg"
-                    >
-                        Return Home
-                    </button>
+                    <?php if ($errorMessage === "session_expired"): ?>
+                        <!-- Session Expired - Only Close Option -->
+                        <button
+                            onclick="window.close()"
+                            class="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 shadow-lg"
+                        >
+                            Close Window
+                        </button>
+                    <?php else: ?>
+                        <!-- Normal Buttons -->
+                        <button
+                            onclick="location.href='/'"
+                            class="flex-1 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary-dark hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 shadow-lg"
+                        >
+                            Return Home
+                        </button>
 
-                    <?php if (!$isSuccess && !$errorMessage): ?>
-                    <button
-                        onclick="history.back()"
-                        class="flex-1 bg-white border-2 border-gray-300 hover:border-gray-400 text-gray-700 font-semibold py-3 px-6 rounded-lg transition-all duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
-                    >
-                        Try Again
-                    </button>
+
                     <?php endif; ?>
                 </div>
             </div>
         </div>
 
         <!-- Additional Status Message -->
-        <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2">
+        <!-- <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2">
             <p class="text-white/70 text-sm text-center">
                 Need help? Contact <a href="mailto:support@example.com" class="text-white underline hover:text-white/90">support@example.com</a>
             </p>
-        </div>
+        </div> -->
     </div>
 
     <script>
