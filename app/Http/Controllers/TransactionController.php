@@ -280,6 +280,23 @@ class TransactionController extends Controller
                         'type' => 'PAYMENT'
                     ]);
                 }
+            } elseif ($transaction->payment_method === 'ZIMSWITCH') {
+                // For ZimSwitch, transactions are handled via callbacks, not polling
+                // If we reach this point, it means the transaction is still pending
+                // ZimSwitch callbacks will directly finalize the transaction
+                $isFinal = false;
+                $inquiryResponse = json_decode($transaction->response, true);
+
+                // Return a special response indicating no polling is needed
+                return response()->json([
+                    'success' => true,
+                    'status' => 'PENDING',
+                    'trace' => $trace,
+                    'message' => 'ZimSwitch payment in progress. Complete the payment to continue.',
+                    'shouldPoll' => false, // ZimSwitch doesn't use polling
+                    'paymentMethod' => $transaction->payment_method,
+                    'useCallback' => true // Indicate this payment uses callback mechanism
+                ]);
             } elseif ($transaction->payment_method === 'OMARI') {
                 // For Omari, first check the current transaction data
                 $transactionData = json_decode($transaction->response, true);
@@ -416,7 +433,7 @@ class TransactionController extends Controller
                 'user_name' => $originalTransaction->user_name,
                 'user_id' => $originalTransaction->user_id,
                 'user_type' => $originalTransaction->user_type,
-                'credit_reference' => $paymentResponse['ecocashReference'] ?? $paymentResponse['stan'] ?? $paymentResponse['paymentReference'] ?? null,
+                'credit_reference' => $paymentResponse['ecocashReference'] ?? $paymentResponse['stan'] ?? $paymentResponse['paymentReference'] ?? $paymentResponse['zimswitchReference'] ?? $paymentResponse['transactionId'] ?? null,
                 'debit_reference' => $paymentResponse['debitReference'] ?? Str::uuid()->toString(),
                 'parent_transaction_id' => $originalTransaction->id
             ]);
@@ -1471,8 +1488,20 @@ class TransactionController extends Controller
 
             // Update transaction with the payment status
             if ($paymentStatus['success']) {
-                // Payment was successful, update transaction to completed
-                $this->finalizeSuccessfulTransaction($transaction, $paymentStatus['responseData']);
+                // Payment was successful, finalize the transaction properly
+                $paymentResponseData = [
+                    'transactionId' => $paymentStatus['transactionId'] ?? null,
+                    'amount' => $transaction->amount,
+                    'currency' => $transaction->currency,
+                    'resultCode' => $paymentStatus['responseCode'] ?? '000.000.000',
+                    'resultDescription' => $paymentStatus['message'] ?? 'Transaction completed successfully',
+                    'paymentBrand' => 'ZIMSWITCH',
+                    'zimswitchReference' => $paymentStatus['transactionId'] ?? null,
+                    'paymentReference' => $paymentStatus['transactionId'] ?? null,
+                    'fullPaymentStatus' => $paymentStatus['responseData'] ?? $paymentStatus
+                ];
+
+                $this->finalizeSuccessfulTransaction($transaction, $paymentResponseData);
 
                 // Redirect to success page or merchant return URL
                 return redirect()->to('/payment/success?reference=' . $transaction->reference);
@@ -1517,36 +1546,51 @@ class TransactionController extends Controller
             $paymentStatus = $this->zimswitchService->checkPaymentStatus($resourcePath);
 
             if ($paymentStatus['success']) {
-                // Find the transaction by trace
-                $transaction = Transaction::where('trace', $trace)->first();
+                // Find the transaction by trace (ensure it's a ZIMSWITCH CONFIRM transaction)
+                $transaction = Transaction::where('trace', $trace)
+                                        ->where('payment_method', 'ZIMSWITCH')
+                                        ->whereIn('type', ['CONFIRM'])
+                                        ->first();
 
                 if ($transaction) {
-                    // Update transaction status
-                    $transaction->update([
-                        'status' => 'completed',
-                        'payment_response' => json_encode($paymentStatus),
-                        'transaction_id' => $paymentStatus['transactionId'] ?? null,
-                        'updated_at' => now()
-                    ]);
+                    // Prepare payment response data for finalization
+                    $paymentResponseData = [
+                        'transactionId' => $paymentStatus['transactionId'] ?? null,
+                        'amount' => $paymentStatus['amount'],
+                        'currency' => $paymentStatus['currency'],
+                        'resultCode' => $paymentStatus['resultCode'] ?? '000.000.000',
+                        'resultDescription' => $paymentStatus['resultDescription'] ?? 'Transaction completed successfully',
+                        'paymentBrand' => 'ZIMSWITCH',
+                        'zimswitchReference' => $paymentStatus['transactionId'] ?? null,
+                        'paymentReference' => $paymentStatus['transactionId'] ?? null,
+                        'fullPaymentStatus' => $paymentStatus
+                    ];
 
-                    Log::info('Zimswitch payment completed successfully', [
+                    Log::info('Zimswitch payment completed successfully, finalizing transaction', [
                         'trace' => $trace,
                         'transaction_id' => $transaction->id,
                         'amount' => $paymentStatus['amount'],
                         'currency' => $paymentStatus['currency']
                     ]);
 
+                    // Use the same finalization process as other payment methods
+                    $finalizationResponse = $this->finalizeSuccessfulTransaction($transaction, $paymentResponseData);
+
+                    // Extract data from the finalization response
+                    $responseData = json_decode($finalizationResponse->getContent(), true);
+
                     return response()->json([
                         'success' => true,
-                        'message' => 'Payment completed successfully',
-                        'transaction' => [
+                        'message' => 'Payment completed and finalized successfully',
+                        'transaction' => $responseData['transaction'] ?? [
                             'id' => $transaction->id,
                             'trace' => $transaction->trace,
                             'amount' => $transaction->amount,
                             'currency' => $transaction->currency,
-                            'status' => $transaction->status,
+                            'status' => 'COMPLETED',
                             'payment_method' => $transaction->payment_method
-                        ]
+                        ],
+                        'finalized' => true
                     ]);
                 } else {
                     Log::warning('Transaction not found for Zimswitch payment', [
@@ -1561,18 +1605,50 @@ class TransactionController extends Controller
                     ]);
                 }
             } else {
-                // Payment failed
-                Log::warning('Zimswitch payment failed', [
-                    'trace' => $trace,
-                    'resourcePath' => $resourcePath,
-                    'error' => $paymentStatus['message']
-                ]);
+                // Payment failed - update transaction using proper failure handling
+                $transaction = Transaction::where('trace', $trace)
+                                        ->where('payment_method', 'ZIMSWITCH')
+                                        ->whereIn('type', ['CONFIRM'])
+                                        ->first();
 
-                return response()->json([
-                    'success' => false,
-                    'message' => $paymentStatus['message'],
-                    'error' => true
-                ]);
+                if ($transaction) {
+                    Log::warning('Zimswitch payment failed, updating transaction', [
+                        'trace' => $trace,
+                        'transaction_id' => $transaction->id,
+                        'resourcePath' => $resourcePath,
+                        'error' => $paymentStatus['message']
+                    ]);
+
+                    // Use proper failure handling method
+                    $failureResponse = $this->handleFailedTransaction(
+                        $transaction,
+                        $paymentStatus['message'] ?? 'Payment failed',
+                        $paymentStatus['resultCode'] ?? '01',
+                        json_encode($paymentStatus)
+                    );
+
+                    // Extract data from the failure response
+                    $responseData = json_decode($failureResponse->getContent(), true);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $paymentStatus['message'],
+                        'transaction' => $responseData['transaction'] ?? null,
+                        'error' => true
+                    ]);
+                } else {
+                    Log::warning('Zimswitch payment failed but transaction not found', [
+                        'trace' => $trace,
+                        'resourcePath' => $resourcePath,
+                        'error' => $paymentStatus['message']
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $paymentStatus['message'],
+                        'error' => true
+                    ]);
+                }
             }
 
         } catch (\Exception $e) {
@@ -1657,53 +1733,127 @@ class TransactionController extends Controller
             $isSuccess = $status && preg_match("/^(000\.000\.|000\.100\.1|000\.[36])/", $status);
 
             if ($isSuccess) {
-                // Find and update the transaction
-                $transaction = Transaction::where('trace', $trace)->first();
+                // Find the transaction
+                $transaction = Transaction::where('trace', $trace)
+                                        ->where('payment_method', 'ZIMSWITCH')
+                                        ->whereIn('type', ['CONFIRM'])
+                                        ->first();
 
                 if ($transaction) {
-                    $transaction->update([
-                        'status' => 'completed',
-                        'payment_response' => json_encode($queryParams),
-                        'transaction_id' => $uuid,
-                        'updated_at' => now()
-                    ]);
+                    // Prepare payment response data for finalization
+                    $paymentResponseData = [
+                        'status' => $status,
+                        'transactionId' => $uuid,
+                        'uuid' => $uuid,
+                        'description' => $resultDescription ?: 'Transaction completed successfully',
+                        'amount' => $transaction->amount,
+                        'currency' => $transaction->currency,
+                        'paymentBrand' => 'ZIMSWITCH',
+                        'resultCode' => $status,
+                        'resultDescription' => $resultDescription,
+                        'zimswitchReference' => $uuid,
+                        'paymentReference' => $uuid,
+                        'callbackParams' => $queryParams
+                    ];
 
-                    Log::info('EFTPay payment completed successfully', [
+                    Log::info('EFTPay payment completed successfully, finalizing transaction', [
                         'trace' => $trace,
                         'transaction_id' => $transaction->id,
                         'status' => $status,
                         'uuid' => $uuid
                     ]);
+
+                    // Use the same finalization process as other payment methods
+                    $finalizationResponse = $this->finalizeSuccessfulTransaction($transaction, $paymentResponseData);
+
+                    // Extract data from the finalization response
+                    $responseData = json_decode($finalizationResponse->getContent(), true);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Payment completed and finalized successfully',
+                        'paymentInfo' => [
+                            'status' => $status,
+                            'description' => $resultDescription ?: 'Transaction completed successfully',
+                            'transactionId' => $uuid,
+                            'trace' => $trace
+                        ],
+                        'transaction' => $responseData['transaction'] ?? null,
+                        'finalized' => true
+                    ]);
+                } else {
+                    Log::warning('EFTPay payment successful but transaction not found', [
+                        'trace' => $trace,
+                        'status' => $status,
+                        'uuid' => $uuid
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Payment successful but transaction record not found',
+                        'paymentInfo' => [
+                            'status' => $status,
+                            'description' => $resultDescription,
+                            'transactionId' => $uuid,
+                            'trace' => $trace
+                        ]
+                    ]);
                 }
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Payment completed successfully',
-                    'paymentInfo' => [
-                        'status' => $status,
-                        'description' => $resultDescription ?: 'Transaction completed successfully',
-                        'transactionId' => $uuid,
-                        'trace' => $trace
-                    ]
-                ]);
             } else {
-                // Payment failed
-                Log::warning('EFTPay payment failed', [
-                    'trace' => $trace,
-                    'status' => $status,
-                    'description' => $resultDescription
-                ]);
+                // Payment failed - update transaction using proper failure handling
+                $transaction = Transaction::where('trace', $trace)
+                                        ->where('payment_method', 'ZIMSWITCH')
+                                        ->whereIn('type', ['CONFIRM'])
+                                        ->first();
 
-                return response()->json([
-                    'success' => false,
-                    'message' => $resultDescription ?: 'Payment failed',
-                    'paymentInfo' => [
+                if ($transaction) {
+                    Log::warning('EFTPay payment failed, updating transaction', [
+                        'trace' => $trace,
+                        'transaction_id' => $transaction->id,
                         'status' => $status,
-                        'description' => $resultDescription ?: 'Payment failed',
-                        'transactionId' => $uuid,
-                        'trace' => $trace
-                    ]
-                ]);
+                        'description' => $resultDescription
+                    ]);
+
+                    // Use proper failure handling method
+                    $failureResponse = $this->handleFailedTransaction(
+                        $transaction,
+                        $resultDescription ?: 'Payment failed',
+                        $status ?: '01',
+                        json_encode($queryParams)
+                    );
+
+                    // Extract data from the failure response
+                    $responseData = json_decode($failureResponse->getContent(), true);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $resultDescription ?: 'Payment failed',
+                        'paymentInfo' => [
+                            'status' => $status,
+                            'description' => $resultDescription ?: 'Payment failed',
+                            'transactionId' => $uuid,
+                            'trace' => $trace
+                        ],
+                        'transaction' => $responseData['transaction'] ?? null
+                    ]);
+                } else {
+                    Log::warning('EFTPay payment failed but transaction not found', [
+                        'trace' => $trace,
+                        'status' => $status,
+                        'description' => $resultDescription
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $resultDescription ?: 'Payment failed',
+                        'paymentInfo' => [
+                            'status' => $status,
+                            'description' => $resultDescription ?: 'Payment failed',
+                            'transactionId' => $uuid,
+                            'trace' => $trace
+                        ]
+                    ]);
+                }
             }
 
         } catch (\Exception $e) {
