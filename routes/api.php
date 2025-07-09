@@ -98,6 +98,7 @@ Route::post('/transactions/cancel', [TransactionController::class, 'cancelTransa
 Route::post('/transactions/status', [TransactionController::class, 'checkTransactionStatus']);
 Route::post('/zimswitch/payment-status', [TransactionController::class, 'checkZimswitchPaymentStatus']);
 Route::post('/zimswitch/test-checkout', [TransactionController::class, 'testZimswitchCheckout']);
+Route::post('/zimswitch/handle-eftpay-callback', [TransactionController::class, 'handleEftPayCallback']);
 
 
 Route::post('/merchant-sign-in', [AuthController::class, 'merchantSignIn']);

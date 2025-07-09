@@ -1620,4 +1620,99 @@ class TransactionController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Handle EFTPay callback URL and extract payment information
+     * This handles the callback URL that EFTPay redirects to
+     */
+    public function handleEftPayCallback(Request $request)
+    {
+        try {
+            $request->validate([
+                'callbackUrl' => 'required|string|url',
+                'trace' => 'required|string'
+            ]);
+
+            $callbackUrl = $request->input('callbackUrl');
+            $trace = $request->input('trace');
+
+            // Parse the callback URL to extract payment information
+            $urlParts = parse_url($callbackUrl);
+            parse_str($urlParts['query'] ?? '', $queryParams);
+
+            Log::info('EFTPay callback URL received', [
+                'callbackUrl' => $callbackUrl,
+                'queryParams' => $queryParams,
+                'trace' => $trace
+            ]);
+
+            // Extract key payment information from URL parameters
+            $status = $queryParams['status'] ?? null;
+            $uuid = $queryParams['uuid'] ?? null;
+            $resultDescription = isset($queryParams['resultDetails.ExtendedDescription'])
+                ? urldecode($queryParams['resultDetails.ExtendedDescription'])
+                : null;
+
+            // Determine if payment was successful using same pattern as working implementation
+            $isSuccess = $status && preg_match("/^(000\.000\.|000\.100\.1|000\.[36])/", $status);
+
+            if ($isSuccess) {
+                // Find and update the transaction
+                $transaction = Transaction::where('trace', $trace)->first();
+
+                if ($transaction) {
+                    $transaction->update([
+                        'status' => 'completed',
+                        'payment_response' => json_encode($queryParams),
+                        'transaction_id' => $uuid,
+                        'updated_at' => now()
+                    ]);
+
+                    Log::info('EFTPay payment completed successfully', [
+                        'trace' => $trace,
+                        'transaction_id' => $transaction->id,
+                        'status' => $status,
+                        'uuid' => $uuid
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Payment completed successfully',
+                    'paymentInfo' => [
+                        'status' => $status,
+                        'description' => $resultDescription ?: 'Transaction completed successfully',
+                        'transactionId' => $uuid,
+                        'trace' => $trace
+                    ]
+                ]);
+            } else {
+                // Payment failed
+                Log::warning('EFTPay payment failed', [
+                    'trace' => $trace,
+                    'status' => $status,
+                    'description' => $resultDescription
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $resultDescription ?: 'Payment failed',
+                    'paymentInfo' => [
+                        'status' => $status,
+                        'description' => $resultDescription ?: 'Payment failed',
+                        'transactionId' => $uuid,
+                        'trace' => $trace
+                    ]
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('EFTPay callback handling error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to process payment callback',
+                'error' => true
+            ], 500);
+        }
+    }
 }

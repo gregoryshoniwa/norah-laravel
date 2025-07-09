@@ -1506,7 +1506,7 @@ export default {
             // Set required cookie for EFTPay (exactly like working pay.php)
             document.cookie = "cookie_eftcorp=https://eftpaygateway.com/; SameSite=Strict; path=/";
 
-            // Configure EFTPay widget options (exactly like working pay.php)
+                        // Configure EFTPay widget options (exactly like working pay.php)
             window.wpwlOptions = {
                 style: "plain",
                 brandDetection: false,
@@ -1636,6 +1636,9 @@ export default {
             script.onload = () => {
                 console.log('EFTPay widget script loaded successfully');
                 this.isLoading = false;
+
+                // Start monitoring for EFTPay callback URLs
+                this.startEftPayCallbackMonitoring(overlay);
             };
             script.onerror = (error) => {
                 console.error('Failed to load EFTPay widget script:', error);
@@ -1654,6 +1657,110 @@ export default {
             document.head.appendChild(script);
 
             console.log('Displaying integrated EFTPay payment form with checkout ID:', checkoutId);
+        },
+
+        /**
+         * Starts monitoring for EFTPay callback URLs
+         * @param {HTMLElement} overlay - The payment overlay to remove when payment is completed
+         */
+        startEftPayCallbackMonitoring(overlay) {
+            const self = this;
+            let paymentCompleted = false;
+
+            // Create a function to handle EFTPay callback URLs
+            const handleEftPayCallback = async (url) => {
+                if (paymentCompleted) return;
+                paymentCompleted = true;
+
+                console.log('EFTPay callback URL detected:', url);
+
+                try {
+                    // Show loading
+                    self.isLoading = true;
+
+                    // Send the callback URL to our handler
+                    const response = await axios.post('/api/v1/zimswitch/handle-eftpay-callback', {
+                        callbackUrl: url,
+                        trace: self.trace
+                    });
+
+                    // Close the overlay
+                    if (overlay && document.body.contains(overlay)) {
+                        document.body.removeChild(overlay);
+                    }
+
+                    if (response.data.success) {
+                        self.$swal.fire({
+                            title: 'Payment Successful!',
+                            text: response.data.paymentInfo.description,
+                            icon: 'success',
+                            confirmButtonText: 'Continue'
+                        }).then(() => {
+                            window.location.href = self.returnUrl;
+                        });
+                    } else {
+                        self.$swal.fire({
+                            title: 'Payment Failed',
+                            text: response.data.message,
+                            icon: 'error',
+                            confirmButtonText: 'Try Again'
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error handling EFTPay callback:', error);
+                    self.$swal.fire({
+                        title: 'Error',
+                        text: 'An error occurred while processing your payment.',
+                        icon: 'error',
+                        confirmButtonText: 'OK'
+                    });
+                } finally {
+                    self.isLoading = false;
+                }
+            };
+
+            // Monitor for URL changes that indicate EFTPay callback
+            const originalPushState = history.pushState;
+            const originalReplaceState = history.replaceState;
+
+            history.pushState = function(data, title, url) {
+                originalPushState.apply(history, arguments);
+                if (url && url.includes('eu-test.oppwa.com/connectors/asyncresponse')) {
+                    handleEftPayCallback(url);
+                }
+            };
+
+            history.replaceState = function(data, title, url) {
+                originalReplaceState.apply(history, arguments);
+                if (url && url.includes('eu-test.oppwa.com/connectors/asyncresponse')) {
+                    handleEftPayCallback(url);
+                }
+            };
+
+            // Also monitor window location changes
+            let lastUrl = window.location.href;
+            const checkForUrlChange = setInterval(() => {
+                const currentUrl = window.location.href;
+                if (currentUrl !== lastUrl) {
+                    lastUrl = currentUrl;
+                    if (currentUrl.includes('eu-test.oppwa.com/connectors/asyncresponse')) {
+                        clearInterval(checkForUrlChange);
+                        handleEftPayCallback(currentUrl);
+                    }
+                }
+
+                // Stop monitoring after 5 minutes
+                if (paymentCompleted) {
+                    clearInterval(checkForUrlChange);
+                }
+            }, 1000);
+
+            // Clean up after 5 minutes
+            setTimeout(() => {
+                clearInterval(checkForUrlChange);
+                history.pushState = originalPushState;
+                history.replaceState = originalReplaceState;
+            }, 300000);
         },
 
         /**
