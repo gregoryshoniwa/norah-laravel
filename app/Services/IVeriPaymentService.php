@@ -33,7 +33,7 @@ class IVeriPaymentService
      */
     public function processPayment($data)
     {
-        
+
         // Generate a unique transaction ID if not provided
         $transactionId = $data['trace'] ?? (string) Str::uuid();
 
@@ -123,7 +123,7 @@ class IVeriPaymentService
                             'reference' => $transaction['TransactionIndex'] ?? null
                         ];
                     }
-                    
+
                     // Check for ACS Form data that needs to be posted to 3D Secure
                     if (isset($transaction['ThreeDSecure_ACSUrl']) && isset($transaction['ThreeDSecure_Payload'])) {
                         return [
@@ -317,7 +317,7 @@ class IVeriPaymentService
         // Return empty if format is invalid
         return '';
     }
-    
+
     /**
      * Initiate 3D Secure enrollment process
      *
@@ -329,7 +329,7 @@ class IVeriPaymentService
         // Extract transaction data from the request
         $transactionId = $data['trace'] ?? (string) Str::uuid();
         $transactionIndex = $data['transactionIndex'] ?? null;
-        
+
         // Prepare the 3D Secure Enrollment request
         $payload = [
             'Version' => '2.0',
@@ -351,32 +351,32 @@ class IVeriPaymentService
                 'ApplicationMerchantCountryCode' => 'ZW'
             ]
         ];
-        
+
         // Log request payload for debugging (mask sensitive data)
         Log::debug('iVeri 3DS enrollment request', [
             'payload' => json_encode($payload),
             'url' => $this->baseUrl . '/api/transactions'
         ]);
-        
+
         try {
             // Make the API request to iVeri
             $response = Http::withHeaders([
                 'Content-Type' => 'application/json'
             ])->post($this->baseUrl . '/api/transactions', $payload);
-            
+
             // Parse the response body
             $responseData = $response->json();
-            
+
             // Log the response for debugging
             Log::debug('iVeri 3DS enrollment response', [
                 'status' => $response->status(),
                 'body' => $response->body()
             ]);
-            
+
             if ($response->successful()) {
                 if (isset($responseData['Transaction'])) {
                     $transaction = $responseData['Transaction'];
-                    
+
                     // Check for 3D Secure URL for authentication challenge
                     if (isset($transaction['ThreeDSecure_Url'])) {
                         return [
@@ -386,7 +386,7 @@ class IVeriPaymentService
                             'trace' => $transactionId
                         ];
                     }
-                    
+
                     // Check if we got a successful 3DS enrollment response
                     if (isset($transaction['ThreeDSecure_AuthenticationValue'])) {
                         return [
@@ -398,11 +398,11 @@ class IVeriPaymentService
                             'responseData' => $transaction
                         ];
                     }
-                    
+
                     // Handle any result codes or errors
                     if (isset($transaction['Result'])) {
                         $result = $transaction['Result'];
-                        
+
                         return [
                             'success' => false,
                             'error' => true,
@@ -414,7 +414,7 @@ class IVeriPaymentService
                     }
                 }
             }
-            
+
             // Handle failed API responses
             return [
                 'success' => false,
@@ -423,14 +423,14 @@ class IVeriPaymentService
                 'trace' => $transactionId,
                 'responseData' => $responseData
             ];
-            
+
         } catch (\Exception $e) {
             // Log the exception
             Log::error('iVeri 3DS enrollment exception', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             // Return error response
             return [
                 'success' => false,

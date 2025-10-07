@@ -587,7 +587,12 @@ export default {
 
             // Map the token data to our component state
             this.tokenData = response.data.data;
-            // console.log('Token Data:', this.tokenData);
+            console.log('Token Data received:', this.tokenData);
+            console.log('Amount:', this.tokenData.amount);
+            console.log('Charge:', this.tokenData.charge);
+            console.log('Total Amount:', this.tokenData.totalAmount);
+            console.log('Currency:', this.tokenData.currency);
+
             if (this.tokenData) {
 
                 this.payment = {
@@ -596,6 +601,8 @@ export default {
                     total: parseFloat(this.tokenData.totalAmount) || 0,
                     currency: this.tokenData.currency || 'USD'
                 };
+
+                console.log('Payment object created:', this.payment);
             }
         } catch (error) {
             this.message = error.response?.data?.message || 'An error occurred while validating the token.';

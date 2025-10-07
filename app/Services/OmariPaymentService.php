@@ -28,9 +28,9 @@ class OmariPaymentService
     public function createPaymentRequest(array $request)
     {
         $reference = Str::uuid()->toString();
-        
+
         $user = User::where('email', $request['user'])->first();
-        
+
         // Check if the user exists
         if (!$user) {
             throw new \Exception('User not found.');
@@ -79,11 +79,11 @@ class OmariPaymentService
         }
 
         $responseData = $response->json();
-        
+
         // Add the reference to the response for future use
         $responseData['reference'] = $reference;
         $responseData['msisdn'] = $msisdn;
-        
+
         return $responseData;
     }
 

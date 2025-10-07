@@ -41,10 +41,30 @@ class ZimswitchPaymentService
                 throw new \Exception('Invalid authentication configuration');
             }
 
+            // Debug: Log the incoming data to understand what's available
+            Log::info('Zimswitch prepareCheckout data received', [
+                'data' => $data,
+                'amount' => $data['amount'] ?? 'not_provided',
+                'total' => $data['total'] ?? 'not_provided',
+                'charge' => $data['charge'] ?? 'not_provided'
+            ]);
+
             // Prepare checkout request using cURL exactly like working implementation
-            $amount = $data['amount'] ?? '1.00';
+            // Use total amount (including charges) instead of base amount
+            $amount = $data['total'] ?? $data['amount'] ?? '1.00';
+
+            // Ensure amount is properly formatted as a decimal
+            $amount = number_format((float)$amount, 2, '.', '');
+
             $currency = $data['currency'] ?? 'USD';
             $paymode = config('app.env') === 'production' ? 'LIVE' : 'TEST_EXTERNAL';
+
+            // Debug: Log the final amount being used
+            Log::info('Zimswitch amount calculation', [
+                'final_amount' => $amount,
+                'currency' => $currency,
+                'source' => isset($data['total']) ? 'total' : (isset($data['amount']) ? 'amount' : 'default')
+            ]);
 
             // Build request data exactly like working pay.php
             $requestData = "entityId=" . $authConfig['entityId'] .
@@ -57,6 +77,14 @@ class ZimswitchPaymentService
             } else if ($paymode == "TEST_EXTERNAL") {
                 $requestData .= "&testMode=EXTERNAL";
             }
+
+            // Debug: Log the request data being sent
+            Log::info('Zimswitch request data', [
+                'request_data' => $requestData,
+                'amount' => $amount,
+                'currency' => $currency,
+                'paymode' => $paymode
+            ]);
 
             // Make cURL request exactly like working implementation
             $ch = curl_init();

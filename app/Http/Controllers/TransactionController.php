@@ -499,15 +499,54 @@ class TransactionController extends Controller
     {
         bcscale(2);
         // System charge logic - always create for both user and merchant types
+        $userEmail = $transaction->user_type === 'U' ? $user->email : $this->getParentUserEmail($user);
+
+        // Debug logging for charge lookup
+        Log::info('System charge lookup', [
+            'user_email' => $userEmail,
+            'currency' => $transaction->currency,
+            'amount' => $transaction->amount,
+            'user_type' => $transaction->user_type
+        ]);
+
         $systemCharge = SystemCharge::active()
-            ->where('user_email', $transaction->user_type === 'U' ? $user->email : $this->getParentUserEmail($user))
+            ->where('user_email', $userEmail)
             ->where('currency', $transaction->currency)
             ->where('min_threshold', '<=', $transaction->amount)
             ->where('max_threshold', '>=', $transaction->amount)
             ->first();
 
         if (!$systemCharge) {
-            throw new \Exception('No applicable system charge found.');
+            // Try to find a general charge (with empty user_email) as fallback
+            $systemCharge = SystemCharge::active()
+                ->where('user_email', '')
+                ->where('currency', $transaction->currency)
+                ->where('min_threshold', '<=', $transaction->amount)
+                ->where('max_threshold', '>=', $transaction->amount)
+                ->first();
+
+            if (!$systemCharge) {
+                // Log available charges for debugging
+                $availableCharges = SystemCharge::active()
+                    ->where('user_email', $userEmail)
+                    ->where('currency', $transaction->currency)
+                    ->get(['id', 'charge_type', 'value', 'min_threshold', 'max_threshold']);
+
+                Log::error('No applicable system charge found', [
+                    'user_email' => $userEmail,
+                    'currency' => $transaction->currency,
+                    'amount' => $transaction->amount,
+                    'available_charges' => $availableCharges->toArray()
+                ]);
+
+                throw new \Exception('No applicable system charge found.');
+            } else {
+                Log::info('Using fallback general charge', [
+                    'charge_id' => $systemCharge->id,
+                    'charge_type' => $systemCharge->charge_type,
+                    'value' => $systemCharge->value
+                ]);
+            }
         }
 
         $calculatedSystemCharge = $this->calculateCharge(
@@ -770,8 +809,8 @@ class TransactionController extends Controller
         $payload = [
             'amount' => $amount,
             'currency' => $currency,
-            'charge' => number_format($totalCharge, 2),
-            'totalAmount' => number_format($totalAmount, 2),
+            'charge' => number_format($totalCharge, 2, '.', ''),
+            'totalAmount' => number_format($totalAmount, 2, '.', ''),
             'name' => $authenticatedUser->company_name,
             'description' => $authenticatedUser->description,
             'user' => $authenticatedUser->email,
@@ -1419,8 +1458,8 @@ class TransactionController extends Controller
         $payload = [
             'amount' => $amount,
             'currency' => $currency,
-            'charge' => number_format($totalCharge, 2),
-            'totalAmount' => number_format($totalAmount, 2),
+            'charge' => number_format($totalCharge, 2, '.', ''),
+            'totalAmount' => number_format($totalAmount, 2, '.', ''),
             'name' => $merchantUser->merchant_name,
             'description' => $merchantUser->merchant_description,
             'user' => $authenticatedUser->email,
@@ -1694,6 +1733,77 @@ class TransactionController extends Controller
                 'message' => 'Test checkout failed: ' . $e->getMessage(),
                 'error' => true
             ], 500);
+        }
+    }
+
+    /**
+     * Test charge calculation for debugging
+     */
+    public function testChargeCalculation(Request $request)
+    {
+        try {
+            $amount = $request->input('amount', 1000);
+            $currency = $request->input('currency', 'USD');
+            $userEmail = $request->input('user_email', 'gregoryshoniwa@gmail.com');
+
+            // Find system charge
+            $systemCharge = SystemCharge::active()
+                ->where('user_email', $userEmail)
+                ->where('currency', $currency)
+                ->where('min_threshold', '<=', $amount)
+                ->where('max_threshold', '>=', $amount)
+                ->first();
+
+            if (!$systemCharge) {
+                // Try general charge
+                $systemCharge = SystemCharge::active()
+                    ->where('user_email', '')
+                    ->where('currency', $currency)
+                    ->where('min_threshold', '<=', $amount)
+                    ->where('max_threshold', '>=', $amount)
+                    ->first();
+            }
+
+            if (!$systemCharge) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No applicable system charge found',
+                    'amount' => $amount,
+                    'currency' => $currency,
+                    'user_email' => $userEmail
+                ]);
+            }
+
+            // Calculate charge
+            $calculatedCharge = 0;
+            if ($systemCharge->charge_type === 'FLAT') {
+                $calculatedCharge = $systemCharge->value;
+            } elseif ($systemCharge->charge_type === 'PERCENTAGE') {
+                $calculatedCharge = $amount * ($systemCharge->value / 100);
+            }
+
+            $totalAmount = $amount + $calculatedCharge;
+
+            return response()->json([
+                'success' => true,
+                'amount' => $amount,
+                'charge' => $calculatedCharge,
+                'totalAmount' => $totalAmount,
+                'currency' => $currency,
+                'systemCharge' => [
+                    'id' => $systemCharge->id,
+                    'type' => $systemCharge->charge_type,
+                    'value' => $systemCharge->value,
+                    'min_threshold' => $systemCharge->min_threshold,
+                    'max_threshold' => $systemCharge->max_threshold
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ]);
         }
     }
 
