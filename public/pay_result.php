@@ -49,7 +49,7 @@ if ($isDirectAccess) {
             $errorMessage = "Connection error: " . $responseData;
         } else {
             $result = json_decode($responseData);
-
+            // echo "<script>console.log('Result: " . json_encode($result) . "');</script>";
             if ($result && isset($result->id)) {
                 // Safely extract properties with null coalescing
                 $resId = $result->id ?? 'N/A';
@@ -59,7 +59,7 @@ if ($isDirectAccess) {
                 $resCurrency = $result->currency ?? 'USD';
                 $resResultDescription = $result->result->description ?? 'Unknown status';
                 $resResultCode = $result->result->code ?? '999.999.999';
-
+                $resResultDetailsExtendedDescription = $result->{'resultDetails'}->{'ExtendedDescription'};
                 // Convert to array format for compatibility with existing template
                 $paymentResult = [
                     'id' => $resId,
@@ -69,9 +69,11 @@ if ($isDirectAccess) {
                     'currency' => $resCurrency,
                     'result' => [
                         'description' => $resResultDescription,
+                        'extendedDescription' => $resResultDetailsExtendedDescription,
                         'code' => $resResultCode
                     ]
                 ];
+
             } else {
                 // Check if the response contains an error message about expired session
                 $responseArray = json_decode($responseData, true);
@@ -317,18 +319,18 @@ if ($isDirectAccess) {
                                         <span class="text-green-600">Reference Number:</span>
                                         <span class="font-mono text-green-800"><?php echo htmlspecialchars($resultData['id']); ?></span>
                                     </div>
-                                    <div class="flex justify-between">
+                                    <!-- <div class="flex justify-between">
                                         <span class="text-green-600">Payment Method:</span>
                                         <span class="font-medium text-green-800"><?php echo htmlspecialchars($resultData['paymentBrand']); ?></span>
-                                    </div>
+                                    </div> -->
                                     <div class="flex justify-between">
                                         <span class="text-green-600">Amount:</span>
                                         <span class="font-bold text-green-800"><?php echo htmlspecialchars($resultData['currency'] . ' ' . number_format($resultData['amount'], 2)); ?></span>
                                     </div>
-                                    <div class="flex justify-between">
+                                    <!-- <div class="flex justify-between">
                                         <span class="text-green-600">Transaction Type:</span>
                                         <span class="font-medium text-green-800"><?php echo htmlspecialchars($resultData['paymentType']); ?></span>
-                                    </div>
+                                    </div> -->
                                 </div>
                             </div>
 
@@ -349,13 +351,25 @@ if ($isDirectAccess) {
                                     <span class="font-mono text-red-800"><?php echo htmlspecialchars($resultData['result']['code']); ?></span>
                                 </div>
                                 <div class="flex justify-between">
-                                    <span class="text-red-600">Description:</span>
-                                    <span class="text-red-800"><?php echo htmlspecialchars($resultData['result']['description']); ?></span>
+                                    <span class="text-red-600">Transaction:</span>
+                                    <span class="text-red-800"><?php echo htmlspecialchars($resultData['currency']); ?> <?php echo htmlspecialchars($resultData['amount']); ?></span>
                                 </div>
                                 <div class="flex justify-between">
+                                    <span class="text-red-600">Description:</span>
+                                    <span class="text-red-800"><?php
+                                        // Show ExtendedDescription if available, otherwise fall back to description
+                                        if (isset($resultData['result']['extendedDescription']) && !empty($resultData['result']['extendedDescription'])) {
+                                            echo htmlspecialchars($resultData['result']['extendedDescription']);
+                                        } else {
+                                            echo htmlspecialchars($resultData['result']['description']);
+                                        }
+                                    ?></span>
+                                </div>
+
+                                <!-- <div class="flex justify-between">
                                     <span class="text-red-600">Payment Method:</span>
                                     <span class="text-red-800"><?php echo htmlspecialchars($resultData['paymentBrand']); ?></span>
-                                </div>
+                                </div> -->
                             </div>
 
                             <div class="mt-4 p-3 bg-red-100 rounded-md">
