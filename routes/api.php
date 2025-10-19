@@ -92,9 +92,15 @@ Route::middleware([JwtMiddleware::class])->group(function () {
     Route::delete('/settings/reset', [SettingsController::class, 'resetSettings']); // Reset user settings to defaults
 });
 Route::post('/transactions/confirmation', [TransactionController::class, 'confirmTransaction']);
+Route::post('/transactions/omari-otp', [TransactionController::class, 'processOmariOtp']);
 Route::post('/transactions/process', [TransactionController::class, 'processTransaction']);
 Route::post('/transactions/cancel', [TransactionController::class, 'cancelTransaction']);
 Route::post('/transactions/status', [TransactionController::class, 'checkTransactionStatus']);
+Route::post('/zimswitch/payment-status', [TransactionController::class, 'checkZimswitchPaymentStatus']);
+Route::post('/zimswitch/test-checkout', [TransactionController::class, 'testZimswitchCheckout']);
+Route::post('/zimswitch/handle-eftpay-callback', [TransactionController::class, 'handleEftPayCallback']);
+Route::post('/transactions/zimswitch-finalize', [TransactionController::class, 'finalizeZimswitchPayment']);
+Route::post('/test-charge-calculation', [TransactionController::class, 'testChargeCalculation']);
 
 
 Route::post('/merchant-sign-in', [AuthController::class, 'merchantSignIn']);
