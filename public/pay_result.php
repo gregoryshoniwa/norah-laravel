@@ -310,36 +310,60 @@ if ($isDirectAccess) {
 
                 <?php elseif (isset($resultData)): ?>
                     <?php if ($isSuccess): ?>
-                        <!-- Success Details -->
+                        <!-- Success - Redirect to Laravel for processing -->
                         <div class="space-y-3">
                             <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                                <h3 class="text-lg font-semibold text-green-800 mb-3">Transaction Details</h3>
-                                <div class="space-y-2 text-sm">
-                                    <div class="flex justify-between">
-                                        <span class="text-green-600">Reference Number:</span>
-                                        <span class="font-mono text-green-800"><?php echo htmlspecialchars($resultData['id']); ?></span>
+                                <h3 class="text-lg font-semibold text-green-800 mb-3">Processing Payment...</h3>
+                                <div class="text-center">
+                                    <div class="inline-flex items-center">
+                                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span class="text-green-700">Finalizing your transaction...</span>
                                     </div>
-                                    <!-- <div class="flex justify-between">
-                                        <span class="text-green-600">Payment Method:</span>
-                                        <span class="font-medium text-green-800"><?php echo htmlspecialchars($resultData['paymentBrand']); ?></span>
-                                    </div> -->
-                                    <div class="flex justify-between">
-                                        <span class="text-green-600">Amount:</span>
-                                        <span class="font-bold text-green-800"><?php echo htmlspecialchars($resultData['currency'] . ' ' . number_format($resultData['amount'], 2)); ?></span>
-                                    </div>
-                                    <!-- <div class="flex justify-between">
-                                        <span class="text-green-600">Transaction Type:</span>
-                                        <span class="font-medium text-green-800"><?php echo htmlspecialchars($resultData['paymentType']); ?></span>
-                                    </div> -->
                                 </div>
                             </div>
-
-                            <!-- Thank You Message -->
-                            <div class="text-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-100">
-                                <h3 class="text-lg font-semibold text-green-800 mb-2">Thank You!</h3>
-                                <p class="text-green-700 text-sm">Your payment has been processed successfully. You will receive a confirmation email shortly.</p>
-                            </div>
                         </div>
+
+                        <script>
+                            // Redirect to Laravel route for processing
+                            setTimeout(function() {
+                                const paymentData = <?php echo json_encode($resultData); ?>;
+                                const resourcePath = '<?php echo $_GET['resourcePath'] ?? ''; ?>';
+
+                                // Create form to submit data to Laravel
+                                const form = document.createElement('form');
+                                form.method = 'POST';
+                                form.action = '/api/v1/transactions/zimswitch-finalize';
+
+                                // Add payment data
+                                const paymentDataInput = document.createElement('input');
+                                paymentDataInput.type = 'hidden';
+                                paymentDataInput.name = 'payment_data';
+                                paymentDataInput.value = JSON.stringify(paymentData);
+                                form.appendChild(paymentDataInput);
+
+                                const resourcePathInput = document.createElement('input');
+                                resourcePathInput.type = 'hidden';
+                                resourcePathInput.name = 'resource_path';
+                                resourcePathInput.value = resourcePath;
+                                form.appendChild(resourcePathInput);
+
+                                // Add CSRF token if available
+                                const csrfToken = document.querySelector('meta[name="csrf-token"]');
+                                if (csrfToken) {
+                                    const csrfInput = document.createElement('input');
+                                    csrfInput.type = 'hidden';
+                                    csrfInput.name = '_token';
+                                    csrfInput.value = csrfToken.getAttribute('content');
+                                    form.appendChild(csrfInput);
+                                }
+
+                                document.body.appendChild(form);
+                                form.submit();
+                            }, 2000); // 2 second delay to show processing message
+                        </script>
 
                     <?php else: ?>
                         <!-- Failure Details -->

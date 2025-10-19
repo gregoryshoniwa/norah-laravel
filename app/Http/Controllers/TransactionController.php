@@ -1975,4 +1975,99 @@ class TransactionController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Finalize ZimSwitch payment from pay_result.php
+     * This method is called when pay_result.php redirects successful payments
+     */
+    public function finalizeZimswitchPayment(Request $request)
+    {
+        try {
+            $paymentData = json_decode($request->input('payment_data'), true);
+            $resourcePath = $request->input('resource_path');
+
+            if (!$paymentData || !$resourcePath) {
+                return redirect('/payment/error?message=Invalid payment data');
+            }
+
+            // Extract payment information
+            $transactionId = $paymentData['id'] ?? null;
+            $amount = $paymentData['amount'] ?? '0.00';
+            $currency = $paymentData['currency'] ?? 'USD';
+            $resultCode = $paymentData['result']['code'] ?? '000.000.000';
+            $resultDescription = $paymentData['result']['description'] ?? 'Transaction completed successfully';
+
+            // Find the original transaction by checking if we can extract trace from resourcePath
+            // or by looking for recent ZIMSWITCH CONFIRM transactions
+            $transaction = null;
+
+            // Try to find transaction by looking for recent ZIMSWITCH CONFIRM transactions
+            // This is a fallback method - ideally we'd have the trace in the payment data
+            $recentTransaction = Transaction::where('payment_method', 'ZIMSWITCH')
+                ->where('type', 'CONFIRM')
+                ->where('status', 'PENDING')
+                ->where('amount', $amount)
+                ->where('currency', $currency)
+                ->orderBy('created_at', 'desc')
+                ->first();
+
+            if ($recentTransaction) {
+                $transaction = $recentTransaction;
+            }
+
+            if (!$transaction) {
+                Log::warning('ZimSwitch payment successful but no matching transaction found', [
+                    'paymentData' => $paymentData,
+                    'resourcePath' => $resourcePath
+                ]);
+
+                // Create a new transaction record for successful payment
+                $transaction = new Transaction();
+                $transaction->type = 'PAYMENT';
+                $transaction->status = 'COMPLETED';
+                $transaction->payment_method = 'ZIMSWITCH';
+                $transaction->amount = $amount;
+                $transaction->currency = $currency;
+                $transaction->reference = $transactionId;
+                $transaction->response_code = '00';
+                $transaction->response = json_encode($paymentData);
+                $transaction->trace = Str::uuid()->toString();
+                $transaction->save();
+
+                return redirect('/payment/success?reference=' . $transaction->reference);
+            }
+
+            // Prepare payment response data for finalization
+            $paymentResponseData = [
+                'transactionId' => $transactionId,
+                'amount' => $amount,
+                'currency' => $currency,
+                'resultCode' => $resultCode,
+                'resultDescription' => $resultDescription,
+                'paymentBrand' => 'ZIMSWITCH',
+                'zimswitchReference' => $transactionId,
+                'paymentReference' => $transactionId,
+                'fullPaymentStatus' => $paymentData
+            ];
+
+            Log::info('Finalizing ZimSwitch payment from pay_result.php', [
+                'transaction_id' => $transaction->id,
+                'amount' => $amount,
+                'currency' => $currency,
+                'resultCode' => $resultCode
+            ]);
+
+            // Use the same finalization process as other payment methods
+            $finalizationResponse = $this->finalizeSuccessfulTransaction($transaction, $paymentResponseData);
+
+            // Extract data from the finalization response
+            $responseData = json_decode($finalizationResponse->getContent(), true);
+
+            return redirect('/payment/success?reference=' . $transaction->reference);
+
+        } catch (\Exception $e) {
+            Log::error('ZimSwitch finalization error: ' . $e->getMessage());
+            return redirect('/payment/error?message=Error processing payment: ' . $e->getMessage());
+        }
+    }
 }

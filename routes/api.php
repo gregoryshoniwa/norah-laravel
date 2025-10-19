@@ -99,6 +99,7 @@ Route::post('/transactions/status', [TransactionController::class, 'checkTransac
 Route::post('/zimswitch/payment-status', [TransactionController::class, 'checkZimswitchPaymentStatus']);
 Route::post('/zimswitch/test-checkout', [TransactionController::class, 'testZimswitchCheckout']);
 Route::post('/zimswitch/handle-eftpay-callback', [TransactionController::class, 'handleEftPayCallback']);
+Route::post('/transactions/zimswitch-finalize', [TransactionController::class, 'finalizeZimswitchPayment']);
 Route::post('/test-charge-calculation', [TransactionController::class, 'testChargeCalculation']);
 
 
