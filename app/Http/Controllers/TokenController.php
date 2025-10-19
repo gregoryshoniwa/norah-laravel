@@ -7,6 +7,7 @@ use App\Models\Merchant;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use Illuminate\Support\Facades\Log;
 
 class TokenController extends Controller
 {
@@ -72,6 +73,15 @@ class TokenController extends Controller
                 // Decode the token using the user's secret
                 $decoded = JWT::decode($token, new Key(env('JWT_SECRET'), 'HS256'));
                 $decoded->logo = $user->logo;
+
+                // Debug logging
+                Log::info('Token validation response', [
+                    'amount' => $decoded->amount ?? 'not_set',
+                    'charge' => $decoded->charge ?? 'not_set',
+                    'totalAmount' => $decoded->totalAmount ?? 'not_set',
+                    'currency' => $decoded->currency ?? 'not_set'
+                ]);
+
                 return response()->json(['message' => 'User token is valid.', 'data' => $decoded], 200);
             } elseif ($type === 'm') {
                 // Validate merchant token
@@ -93,6 +103,15 @@ class TokenController extends Controller
                 $decoded = JWT::decode($token, new Key(env('JWT_SECRET'), 'HS256'));
                 // $decoded->user = $merchant->merchant_name;
                 $decoded->logo = $merchant->merchant_logo;
+
+                // Debug logging
+                Log::info('Merchant token validation response', [
+                    'amount' => $decoded->amount ?? 'not_set',
+                    'charge' => $decoded->charge ?? 'not_set',
+                    'totalAmount' => $decoded->totalAmount ?? 'not_set',
+                    'currency' => $decoded->currency ?? 'not_set'
+                ]);
+
                 return response()->json(['message' => 'Merchant token is valid.', 'data' => $decoded], 200);
             } else {
                 return response()->json(['message' => 'Invalid token type.'], 400);
