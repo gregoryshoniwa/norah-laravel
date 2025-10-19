@@ -1,0 +1,123 @@
+{
+  "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff": {
+    "file": "assets/bootstrap-icons-BOrJxbIo.woff",
+    "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff"
+  },
+  "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2": {
+    "file": "assets/bootstrap-icons-BtvjY1KL.woff2",
+    "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-CI3OIpFp.css",
+    "src": "resources/css/app.css",
+    "isEntry": true
+  },
+  "resources/fonts/flaticon.eot": {
+    "file": "assets/flaticon-C84ygiNd.eot",
+    "src": "resources/fonts/flaticon.eot"
+  },
+  "resources/fonts/flaticon.svg": {
+    "file": "assets/flaticon-CMoRJvss.svg",
+    "src": "resources/fonts/flaticon.svg"
+  },
+  "resources/fonts/flaticon.ttf": {
+    "file": "assets/flaticon-Br0gFXdl.ttf",
+    "src": "resources/fonts/flaticon.ttf"
+  },
+  "resources/fonts/flaticon.woff": {
+    "file": "assets/flaticon-CuZ950ds.woff",
+    "src": "resources/fonts/flaticon.woff"
+  },
+  "resources/fonts/flaticon.woff2": {
+    "file": "assets/flaticon-hwaVMupF.woff2",
+    "src": "resources/fonts/flaticon.woff2"
+  },
+  "resources/fonts/remixicon.eot": {
+    "file": "assets/remixicon-Crkp6QDu.eot",
+    "src": "resources/fonts/remixicon.eot"
+  },
+  "resources/fonts/remixicon.svg": {
+    "file": "assets/remixicon-bgXgLUrR.svg",
+    "src": "resources/fonts/remixicon.svg"
+  },
+  "resources/fonts/remixicon.ttf": {
+    "file": "assets/remixicon-t1-W4cIE.ttf",
+    "src": "resources/fonts/remixicon.ttf"
+  },
+  "resources/fonts/remixicon.woff": {
+    "file": "assets/remixicon-ChM2DbYV.woff",
+    "src": "resources/fonts/remixicon.woff"
+  },
+  "resources/fonts/remixicon.woff2": {
+    "file": "assets/remixicon-D6lcKq3b.woff2",
+    "src": "resources/fonts/remixicon.woff2"
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-DvncBqtK.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "dynamicImports": [
+      "resources/js/components/pages/DashboardHome.vue",
+      "resources/js/components/pages/Settings.vue",
+      "resources/js/components/pages/Transactions.vue"
+    ],
+    "css": [
+      "assets/app-s0Ms5QtG.css",
+      "assets/app-CI3OIpFp.css"
+    ],
+    "assets": [
+      "assets/bootstrap-icons-BtvjY1KL.woff2",
+      "assets/bootstrap-icons-BOrJxbIo.woff",
+      "assets/flaticon-Br0gFXdl.ttf",
+      "assets/flaticon-CuZ950ds.woff",
+      "assets/flaticon-hwaVMupF.woff2",
+      "assets/flaticon-C84ygiNd.eot",
+      "assets/flaticon-CMoRJvss.svg",
+      "assets/remixicon-Crkp6QDu.eot",
+      "assets/remixicon-D6lcKq3b.woff2",
+      "assets/remixicon-ChM2DbYV.woff",
+      "assets/remixicon-t1-W4cIE.ttf",
+      "assets/remixicon-bgXgLUrR.svg"
+    ]
+  },
+  "resources/js/components/pages/DashboardHome.vue": {
+    "file": "assets/DashboardHome-DiiY9na8.js",
+    "name": "DashboardHome",
+    "src": "resources/js/components/pages/DashboardHome.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/DashboardHome-BBpex7vp.css",
+      "assets/app-CI3OIpFp.css"
+    ]
+  },
+  "resources/js/components/pages/Settings.vue": {
+    "file": "assets/Settings-Ick_GUDb.js",
+    "name": "Settings",
+    "src": "resources/js/components/pages/Settings.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Settings-DF9kVGVR.css",
+      "assets/app-CI3OIpFp.css"
+    ]
+  },
+  "resources/js/components/pages/Transactions.vue": {
+    "file": "assets/Transactions-CK4EKv2p.js",
+    "name": "Transactions",
+    "src": "resources/js/components/pages/Transactions.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Transactions-Su4mbCgn.css",
+      "assets/app-CI3OIpFp.css"
+    ]
+  }
+}

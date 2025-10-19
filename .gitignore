@@ -23,7 +23,7 @@ yarn-error.log
 /storage/framework/views/*
 /storage/logs/*
 /storage/app/public/*
-/public/build
+# /public/build
 
 # OS generated files
 .DS_Store
