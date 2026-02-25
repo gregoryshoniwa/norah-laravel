@@ -1,0 +1,6 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/$USER/public_html
+    - /bin/mkdir -p "$DEPLOYPATH"
+    - /bin/cp -R app bootstrap config database public resources routes storage artisan composer.json composer.lock package.json package-lock.json vite.config.js "$DEPLOYPATH"
