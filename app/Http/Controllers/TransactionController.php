@@ -12,6 +12,7 @@ use App\Models\Charge;
 use App\Services\EcoCashPaymentService;
 use App\Services\InnBucksPaymentService;
 use App\Services\OmariPaymentService;
+use App\Services\TransactionAuditService;
 use App\Services\ZimswitchPaymentService;
 use App\Services\IVeriPaymentService;
 use App\Models\Transaction;
@@ -28,6 +29,7 @@ class TransactionController extends Controller
     protected $omariService;
     protected $zimswitchService;
     protected $iveriService;
+    protected $transactionAuditService;
 
 
     public function __construct(
@@ -35,7 +37,8 @@ class TransactionController extends Controller
         EcoCashPaymentService $ecocashService,
         OmariPaymentService $omariService,
         ZimswitchPaymentService $zimswitchService,
-        IVeriPaymentService $iveriService
+        IVeriPaymentService $iveriService,
+        TransactionAuditService $transactionAuditService
     )
     {
         $this->innbucksService = $innbucksService;
@@ -43,24 +46,41 @@ class TransactionController extends Controller
         $this->omariService = $omariService;
         $this->zimswitchService = $zimswitchService;
         $this->iveriService = $iveriService;
+        $this->transactionAuditService = $transactionAuditService;
     }
 
     public function confirmTransaction(Request $request)
     {
         $paymentMethod = $request->input('paymentMethod');
         $response = null;
+        $transactionTrace = Str::uuid()->toString();
+
+        $this->audit([
+            'trace' => $transactionTrace,
+            'payment_method' => $paymentMethod,
+            'stage' => 'CONFIRMATION',
+            'event' => 'TRANSACTION_CONFIRMATION_RECEIVED',
+            'level' => 'INFO',
+            'request_payload' => $request->all(),
+        ]);
 
         try {
             if ($paymentMethod === 'INNBUCKS') {
-                $response = $this->innbucksService->createPaymentRequest($request->all());
+                $innBucksRequest = $request->all();
+                $innBucksRequest['_auditTrace'] = $transactionTrace;
+                $response = $this->innbucksService->createPaymentRequest($innBucksRequest);
                 $reference = $response['code'] ?? null;
                 $requiresOtp = false;
             } elseif ($paymentMethod === 'ECOCASH') {
-                $response = $this->ecocashService->createPaymentRequest($request->all());
+                $ecoCashRequest = $request->all();
+                $ecoCashRequest['_auditTrace'] = $transactionTrace;
+                $response = $this->ecocashService->createPaymentRequest($ecoCashRequest);
                 $reference = $response['referenceCode'] ?? null;
                 $requiresOtp = false;
             } elseif ($paymentMethod === 'OMARI') {
-                $response = $this->omariService->createPaymentRequest($request->all());
+                $omariRequest = $request->all();
+                $omariRequest['_auditTrace'] = $transactionTrace;
+                $response = $this->omariService->createPaymentRequest($omariRequest);
                 $reference = $response['reference'] ?? null;
 
                 // For Omari, check if authorization was successful, which means OTP was sent
@@ -69,20 +89,16 @@ class TransactionController extends Controller
                 // Store if this is an error response
                 $hasError = isset($response['error']) && $response['error'] === true;
             } elseif ($paymentMethod === 'ZIMSWITCH') {
-                // Generate a trace ID before calling prepareCheckout
-                $trace = Str::uuid()->toString();
                 $data = $request->all();
-                $data['trace'] = $trace;
+                $data['trace'] = $transactionTrace;
 
                 $response = $this->zimswitchService->prepareCheckout($data);
                 $reference = $response['checkoutId'] ?? null;  // Use the checkout ID as reference
                 $requiresOtp = false;  // No OTP required for Zimswitch
                 $hasError = isset($response['error']) && $response['error'] === true;
             } elseif ($paymentMethod === 'VISA_MASTER') {
-                // Generate a trace ID before processing payment
-                $trace = Str::uuid()->toString();
                 $data = $request->all();
-                $data['trace'] = $trace;
+                $data['trace'] = $transactionTrace;
 
                 // Process the card payment through iVeri
                 $response = $this->iveriService->processPayment($data);
@@ -95,7 +111,7 @@ class TransactionController extends Controller
                     return response()->json([
                         'success' => true,
                         'redirectUrl' => $response['redirectUrl'],
-                        'trace' => $trace,
+                        'trace' => $transactionTrace,
                         'reference' => $response['reference'] ?? null,
                         'returnUrl' => url('/payment/complete?status=success')
                     ]);
@@ -107,7 +123,7 @@ class TransactionController extends Controller
                         'success' => true,
                         'acsUrl' => $response['acsUrl'],
                         'acsPayload' => $response['acsPayload'],
-                        'trace' => $trace,
+                        'trace' => $transactionTrace,
                         'reference' => $response['reference'] ?? null,
                         'returnUrl' => url('/payment/complete?status=success')
                     ]);
@@ -129,8 +145,7 @@ class TransactionController extends Controller
             $transaction->type = 'CONFIRM';
             $transaction->pan = $request->input('pan') ?? $request->input('phoneNumber');
             $transaction->expiry_date = $request->input('expiryDate');
-            // Use the trace we generated for Zimswitch, or generate a new one for other payment methods
-            $transaction->trace = $paymentMethod === 'ZIMSWITCH' ? $trace : Str::uuid()->toString();
+            $transaction->trace = $transactionTrace;
             $transaction->reference = $reference;
             $transaction->currency = $request->input('currency');
             $transaction->amount = number_format((float) $request->input('amount'), 2, '.', '');
@@ -148,6 +163,24 @@ class TransactionController extends Controller
 
             $transaction->save();
 
+            $this->transactionAuditService->linkToTransaction($transaction->trace, $transaction->id);
+            $this->audit([
+                'transaction_id' => $transaction->id,
+                'user_id' => $user->id,
+                'trace' => $transaction->trace,
+                'reference' => $reference,
+                'payment_method' => $paymentMethod,
+                'stage' => 'CONFIRMATION',
+                'event' => 'TRANSACTION_CONFIRMATION_SAVED',
+                'level' => 'INFO',
+                'request_payload' => $request->all(),
+                'response_payload' => $response,
+                'meta_data' => [
+                    'status' => $transaction->status,
+                    'transaction_type' => $transaction->type,
+                ],
+            ]);
+
             // Handle payment errors for Omari or Zimswitch
             if (($paymentMethod === 'OMARI' && isset($hasError) && $hasError) ||
                 ($paymentMethod === 'ZIMSWITCH' && isset($response['error']) && $response['error'] === true)) {
@@ -158,6 +191,22 @@ class TransactionController extends Controller
                     'response_code' => $response['responseCode'] ?? '01',
                     'error_message' => $response['message'] ?? 'Authorization failed',
                     'type' => 'PAYMENT'
+                ]);
+
+                $this->audit([
+                    'transaction_id' => $transaction->id,
+                    'user_id' => $user->id,
+                    'trace' => $transaction->trace,
+                    'reference' => $reference,
+                    'payment_method' => $paymentMethod,
+                    'stage' => 'CONFIRMATION',
+                    'event' => 'TRANSACTION_MARKED_FAILED',
+                    'level' => 'ERROR',
+                    'response_payload' => $response,
+                    'meta_data' => [
+                        'status' => 'FAILED',
+                        'response_code' => $response['responseCode'] ?? '01',
+                    ],
                 ]);
 
                 // Return error response
@@ -173,6 +222,18 @@ class TransactionController extends Controller
 
             // Special response for Zimswitch integrated in Vue.js
             if ($paymentMethod === 'ZIMSWITCH' && isset($response['success']) && $response['success']) {
+                $this->audit([
+                    'transaction_id' => $transaction->id,
+                    'user_id' => $user->id,
+                    'trace' => $transaction->trace,
+                    'reference' => $reference,
+                    'payment_method' => $paymentMethod,
+                    'stage' => 'CONFIRMATION',
+                    'event' => 'ZIMSWITCH_CHECKOUT_PREPARED',
+                    'level' => 'INFO',
+                    'response_payload' => $response,
+                ]);
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Zimswitch checkout prepared successfully.',
@@ -190,6 +251,22 @@ class TransactionController extends Controller
             }
 
             // Standard response for other payment methods
+            $this->audit([
+                'transaction_id' => $transaction->id,
+                'user_id' => $user->id,
+                'trace' => $transaction->trace,
+                'reference' => $reference,
+                'payment_method' => $paymentMethod,
+                'stage' => 'CONFIRMATION',
+                'event' => 'TRANSACTION_CONFIRMATION_RESPONSE_SENT',
+                'level' => 'INFO',
+                'response_payload' => [
+                    'success' => true,
+                    'shouldPoll' => true,
+                    'requiresOtp' => $requiresOtp ?? false,
+                ],
+            ]);
+
             return response()->json([
                 'success' => true,
                 'data' => $response,
@@ -203,9 +280,50 @@ class TransactionController extends Controller
                 'pollInterval' => $paymentMethod === 'INNBUCKS' ? 30000 : ($paymentMethod === 'OMARI' ? 10000 : 5000) // 30s for INNBUCKS, 10s for OMARI, 5s for others
             ]);
         } catch (\Exception $e) {
+            // Save a FAILED transaction so it always appears in the dashboard
+            try {
+                $failedUser = User::where('email', $request->input('user'))->first();
+                $failedTransaction = new Transaction();
+                $failedTransaction->type = 'PAYMENT';
+                $failedTransaction->pan = $request->input('pan') ?? $request->input('phoneNumber');
+                $failedTransaction->trace = $transactionTrace;
+                $failedTransaction->currency = $request->input('currency');
+                $failedTransaction->amount = number_format((float) $request->input('amount'), 2, '.', '');
+                $failedTransaction->charge = number_format((float) $request->input('charge'), 2, '.', '');
+                $failedTransaction->status = 'FAILED';
+                $failedTransaction->payment_method = $paymentMethod;
+                $failedTransaction->numeric_amount = number_format((float) $request->input('amount'), 2, '.', '');
+                $failedTransaction->response_code = '01';
+                $failedTransaction->error_message = $e->getMessage();
+                $failedTransaction->request = json_encode($request->all());
+                $failedTransaction->user_name = $failedUser->email ?? null;
+                $failedTransaction->user_id = $failedUser->id ?? null;
+                $failedTransaction->user_type = $failedUser ? ($failedUser->role === 'ADMIN' ? 'U' : 'M') : null;
+                $failedTransaction->save();
+
+                $this->transactionAuditService->linkToTransaction($transactionTrace, $failedTransaction->id);
+            } catch (\Exception $saveEx) {
+                report($saveEx);
+            }
+
+            $this->audit([
+                'transaction_id' => isset($failedTransaction) ? $failedTransaction->id : null,
+                'user_id' => isset($failedUser) ? $failedUser->id : null,
+                'trace' => $transactionTrace,
+                'payment_method' => $paymentMethod,
+                'stage' => 'CONFIRMATION',
+                'event' => 'TRANSACTION_CONFIRMATION_EXCEPTION',
+                'level' => 'ERROR',
+                'request_payload' => $request->all(),
+                'response_payload' => [
+                    'message' => $e->getMessage(),
+                ],
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
+                'trace' => $transactionTrace,
             ], 500);
         }
     }
@@ -213,6 +331,13 @@ class TransactionController extends Controller
     public function checkTransactionStatus(Request $request)
     {
         $trace = $request->trace;
+        $this->audit([
+            'trace' => $trace,
+            'stage' => 'STATUS_CHECK',
+            'event' => 'STATUS_CHECK_REQUEST_RECEIVED',
+            'level' => 'INFO',
+            'request_payload' => $request->all(),
+        ]);
 
         try {
             $transaction = Transaction::where('trace', $trace)
@@ -220,6 +345,12 @@ class TransactionController extends Controller
                             ->first();
 
             if (!$transaction) {
+                $this->audit([
+                    'trace' => $trace,
+                    'stage' => 'STATUS_CHECK',
+                    'event' => 'STATUS_CHECK_TRANSACTION_NOT_FOUND',
+                    'level' => 'ERROR',
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Transaction not found.',
@@ -249,7 +380,7 @@ class TransactionController extends Controller
                 $isFinal = $inquiryResponse['status'] === 'Claimed';
 
             } elseif ($transaction->payment_method === 'ECOCASH') {
-                $inquiryResponse = $this->ecocashService->inquirePaymentRequest($transaction->pan, $transaction->reference);
+                $inquiryResponse = $this->ecocashService->inquirePaymentRequest($transaction->pan, $transaction->reference, $transaction->trace);
                 $isFinal = $inquiryResponse['transactionOperationStatus'] === 'COMPLETED' ||
                            $inquiryResponse['transactionOperationStatus'] === 'FAILED';
             } elseif ($transaction->payment_method === 'VISA_MASTER') {
@@ -302,7 +433,7 @@ class TransactionController extends Controller
                 $transactionData = json_decode($transaction->response, true);
 
                 // Always query the payment status from Omari service
-                $inquiryResponse = $this->omariService->inquirePaymentRequest($transaction->reference);
+                $inquiryResponse = $this->omariService->inquirePaymentRequest($transaction->reference, $transaction->trace);
 
                 // Check if the inquiry response indicates payment success or failure
                 if (isset($inquiryResponse['status'])) {
@@ -391,6 +522,21 @@ class TransactionController extends Controller
             }
 
             // Return current status
+            $this->audit([
+                'transaction_id' => $transaction->id,
+                'user_id' => $transaction->user_id,
+                'trace' => $trace,
+                'reference' => $transaction->reference,
+                'payment_method' => $transaction->payment_method,
+                'stage' => 'STATUS_CHECK',
+                'event' => 'STATUS_CHECK_PENDING_RESPONSE',
+                'level' => 'INFO',
+                'response_payload' => [
+                    'status' => 'PENDING',
+                    'isFinal' => $isFinal,
+                ],
+            ]);
+
             return response()->json([
                 'success' => true,
                 'status' => 'PENDING',
@@ -401,6 +547,19 @@ class TransactionController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            $this->audit([
+                'transaction_id' => isset($transaction) ? $transaction->id : null,
+                'user_id' => isset($transaction) ? $transaction->user_id : null,
+                'trace' => $trace,
+                'reference' => isset($transaction) ? $transaction->reference : null,
+                'payment_method' => isset($transaction) ? $transaction->payment_method : null,
+                'stage' => 'STATUS_CHECK',
+                'event' => 'STATUS_CHECK_EXCEPTION',
+                'level' => 'ERROR',
+                'response_payload' => [
+                    'message' => $e->getMessage(),
+                ],
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -411,6 +570,18 @@ class TransactionController extends Controller
     protected function finalizeSuccessfulTransaction(Transaction $originalTransaction, array $paymentResponse)
     {
         DB::beginTransaction();
+
+        $this->audit([
+            'transaction_id' => $originalTransaction->id,
+            'user_id' => $originalTransaction->user_id,
+            'trace' => $originalTransaction->trace,
+            'reference' => $originalTransaction->reference,
+            'payment_method' => $originalTransaction->payment_method,
+            'stage' => 'FINALIZATION',
+            'event' => 'FINALIZATION_STARTED',
+            'level' => 'INFO',
+            'response_payload' => $paymentResponse,
+        ]);
 
         try {
             // Create a new transaction with completed status
@@ -469,6 +640,21 @@ class TransactionController extends Controller
 
             DB::commit();
 
+            $this->audit([
+                'transaction_id' => $newTransaction->id,
+                'user_id' => $newTransaction->user_id,
+                'trace' => $newTransaction->trace,
+                'reference' => $newTransaction->reference,
+                'payment_method' => $newTransaction->payment_method,
+                'stage' => 'FINALIZATION',
+                'event' => 'FINALIZATION_COMPLETED',
+                'level' => 'INFO',
+                'response_payload' => [
+                    'status' => $newTransaction->status,
+                    'payment_transaction_id' => $newTransaction->id,
+                ],
+            ]);
+
             return response()->json([
                 'success' => true,
                 'data' => $paymentResponse,
@@ -487,6 +673,19 @@ class TransactionController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            $this->audit([
+                'transaction_id' => $originalTransaction->id,
+                'user_id' => $originalTransaction->user_id,
+                'trace' => $originalTransaction->trace,
+                'reference' => $originalTransaction->reference,
+                'payment_method' => $originalTransaction->payment_method,
+                'stage' => 'FINALIZATION',
+                'event' => 'FINALIZATION_EXCEPTION',
+                'level' => 'ERROR',
+                'response_payload' => [
+                    'message' => $e->getMessage(),
+                ],
+            ]);
             return $this->handleFailedTransaction(
                 $originalTransaction,
                 'Failed to finalize transaction: ' . $e->getMessage(),
@@ -657,6 +856,21 @@ class TransactionController extends Controller
             'type' => 'PAYMENT'
         ]);
 
+        $this->audit([
+            'transaction_id' => $transaction->id,
+            'user_id' => $transaction->user_id,
+            'trace' => $transaction->trace,
+            'reference' => $transaction->reference,
+            'payment_method' => $transaction->payment_method,
+            'stage' => 'CANCELLATION',
+            'event' => 'TRANSACTION_CANCELLED',
+            'level' => 'INFO',
+            'response_payload' => [
+                'status' => 'CANCELLED',
+                'response_code' => '02',
+            ],
+        ]);
+
         $user = $this->getUserFromTransaction($transaction);
 
         return response()->json([
@@ -676,6 +890,22 @@ class TransactionController extends Controller
             'response_code' => $responseCode,
             'error_message' => $errorMessage ?? $message,
             'type' => 'PAYMENT'
+        ]);
+
+        $this->audit([
+            'transaction_id' => $transaction->id,
+            'user_id' => $transaction->user_id,
+            'trace' => $transaction->trace,
+            'reference' => $transaction->reference,
+            'payment_method' => $transaction->payment_method,
+            'stage' => 'FAILURE',
+            'event' => 'TRANSACTION_FAILED',
+            'level' => 'ERROR',
+            'response_payload' => [
+                'message' => $message,
+                'response_code' => $responseCode,
+                'error_message' => $errorMessage ?? $message,
+            ],
         ]);
 
         $user = $this->getUserFromTransaction($transaction);
@@ -706,6 +936,14 @@ class TransactionController extends Controller
     {
         $trace = $request->trace;
 
+        $this->audit([
+            'trace' => $trace,
+            'stage' => 'CANCELLATION',
+            'event' => 'CANCEL_REQUEST_RECEIVED',
+            'level' => 'INFO',
+            'request_payload' => $request->all(),
+        ]);
+
         DB::beginTransaction();
         try {
             $transaction = Transaction::where('trace', $trace)
@@ -713,6 +951,12 @@ class TransactionController extends Controller
                             ->first();
 
             if (!$transaction) {
+                $this->audit([
+                    'trace' => $trace,
+                    'stage' => 'CANCELLATION',
+                    'event' => 'CANCEL_TRANSACTION_NOT_FOUND',
+                    'level' => 'ERROR',
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Transaction not found.',
@@ -751,6 +995,15 @@ class TransactionController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            $this->audit([
+                'trace' => $trace,
+                'stage' => 'CANCELLATION',
+                'event' => 'CANCEL_EXCEPTION',
+                'level' => 'ERROR',
+                'response_payload' => [
+                    'message' => $e->getMessage(),
+                ],
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -1048,6 +1301,7 @@ class TransactionController extends Controller
         $startDate = $request->get('start_date', '');
         $endDate = $request->get('end_date', '');
         $currency = $request->get('currency', '');
+        $paymentMethod = $request->get('payment_method', '');
         $countByStatus = $request->get('count_by_status', false);
 
         try {
@@ -1074,6 +1328,9 @@ class TransactionController extends Controller
                 $query->where(function($q) use ($search) {
                     $q->where('id', 'LIKE', "%{$search}%")
                       ->orWhere('user_name', 'LIKE', "%{$search}%")
+                      ->orWhere('reference', 'LIKE', "%{$search}%")
+                      ->orWhere('trace', 'LIKE', "%{$search}%")
+                      ->orWhere('payment_method', 'LIKE', "%{$search}%")
                       ->orWhereRaw('LOWER(CAST(amount AS CHAR)) LIKE ?', ["%{$search}%"])
                       ->orWhere('status', 'LIKE', "%{$search}%")
                       ->orWhere('currency', 'LIKE', "%{$search}%");
@@ -1083,6 +1340,11 @@ class TransactionController extends Controller
             // Apply status filter
             if (!empty($status)) {
                 $query->where('status', $status);
+            }
+
+            // Apply payment method filter
+            if (!empty($paymentMethod)) {
+                $query->where('payment_method', $paymentMethod);
             }
 
             // Apply date range filter
@@ -1290,12 +1552,29 @@ class TransactionController extends Controller
 
     public function processOmariOtp(Request $request)
     {
+        $this->audit([
+            'trace' => $request->input('trace'),
+            'payment_method' => 'OMARI',
+            'stage' => 'OTP',
+            'event' => 'OMARI_OTP_REQUEST_RECEIVED',
+            'level' => 'INFO',
+            'request_payload' => $request->all(),
+        ]);
+
         $validator = Validator::make($request->all(), [
             'trace' => 'required|string',
             'otp' => 'required|string'
         ]);
 
         if ($validator->fails()) {
+            $this->audit([
+                'trace' => $request->input('trace'),
+                'payment_method' => 'OMARI',
+                'stage' => 'OTP',
+                'event' => 'OMARI_OTP_VALIDATION_FAILED',
+                'level' => 'ERROR',
+                'response_payload' => $validator->errors()->toArray(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed.',
@@ -1310,6 +1589,13 @@ class TransactionController extends Controller
                             ->first();
 
             if (!$transaction) {
+                $this->audit([
+                    'trace' => $request->input('trace'),
+                    'payment_method' => 'OMARI',
+                    'stage' => 'OTP',
+                    'event' => 'OMARI_OTP_TRANSACTION_NOT_FOUND',
+                    'level' => 'ERROR',
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Transaction not found or invalid payment method.'
@@ -1340,6 +1626,18 @@ class TransactionController extends Controller
                     'error_message' => $paymentResponse['message'] ?? 'Payment failed'
                 ]);
 
+                $this->audit([
+                    'transaction_id' => $transaction->id,
+                    'user_id' => $transaction->user_id,
+                    'trace' => $transaction->trace,
+                    'reference' => $transaction->reference,
+                    'payment_method' => 'OMARI',
+                    'stage' => 'OTP',
+                    'event' => 'OMARI_OTP_PAYMENT_FAILED',
+                    'level' => 'ERROR',
+                    'response_payload' => $paymentResponse,
+                ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => $paymentResponse['message'] ?? 'Payment failed',
@@ -1347,6 +1645,18 @@ class TransactionController extends Controller
                     'shouldPoll' => false
                 ]);
             }
+
+            $this->audit([
+                'transaction_id' => $transaction->id,
+                'user_id' => $transaction->user_id,
+                'trace' => $transaction->trace,
+                'reference' => $transaction->reference,
+                'payment_method' => 'OMARI',
+                'stage' => 'OTP',
+                'event' => 'OMARI_OTP_PROCESSED_SUCCESSFULLY',
+                'level' => 'INFO',
+                'response_payload' => $paymentResponse,
+            ]);
 
             // Update transaction with OTP info for successful payment
             $transaction->update([
@@ -1365,6 +1675,16 @@ class TransactionController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            $this->audit([
+                'trace' => $request->input('trace'),
+                'payment_method' => 'OMARI',
+                'stage' => 'OTP',
+                'event' => 'OMARI_OTP_EXCEPTION',
+                'level' => 'ERROR',
+                'response_payload' => [
+                    'message' => $e->getMessage(),
+                ],
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage()
@@ -2069,5 +2389,10 @@ class TransactionController extends Controller
             Log::error('ZimSwitch finalization error: ' . $e->getMessage());
             return redirect('/payment/error?message=Error processing payment: ' . $e->getMessage());
         }
+    }
+
+    protected function audit(array $data): void
+    {
+        $this->transactionAuditService->record($data);
     }
 }

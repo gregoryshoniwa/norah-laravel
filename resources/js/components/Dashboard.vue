@@ -23,6 +23,10 @@
           <i class="ri-exchange-dollar-line"></i>
           Transactions
         </router-link>
+        <router-link :to="{ name: 'charges' }" class="nav-item" active-class="active">
+          <i class="ri-money-cny-circle-line"></i>
+          Charges
+        </router-link>
         <router-link :to="{ name: 'settings' }" class="nav-item" active-class="active">
           <i class="ri-settings-3-line"></i>
           Settings

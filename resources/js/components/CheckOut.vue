@@ -865,15 +865,14 @@ export default {
                 // alert('Payment confirmation failed: ' + response.data.message);
             }
         } catch (error) {
-            console.log(error);
+            console.error('Error confirming payment:', error);
             this.isLoading = false;
+            const errMsg = error.response?.data?.message || error.message || 'An error occurred while confirming the payment.';
             this.$swal.fire(
-                    "Payment Failed",
-                   'Error confirming payment:', error.response?.data || error.message || response.data.data.message,
-                    "error"
-                );
-            console.error('Error confirming payment:', error.response?.data || error.message || response.data.data.message);
-            // alert('An error occurred while confirming the payment.');
+                "Payment Failed",
+                errMsg,
+                "error"
+            );
         }
     },
     async confirmPaymentSuccess(data, trace) {

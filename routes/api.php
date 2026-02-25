@@ -7,6 +7,8 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ChargesController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\TransactionAuditController;
+use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\TokenController;
 use App\Http\Middleware\JwtMiddleware;
 
@@ -18,9 +20,16 @@ Route::post('/validate-user-token', [TokenController::class, 'validateUserToken'
 Route::post('/validate-merchant-token', [TokenController::class, 'validateMerchantToken']);
 Route::post('/validate-token', [TokenController::class, 'decodeAndValidateToken']); // Decode and validate token
 
-//Super user
-Route::middleware([JwtMiddleware::class])->group(function () {
-    Route::post('/admin/create-super-user', [AdminController::class, 'createSuperUser']);
+// Super admin routes
+Route::middleware([JwtMiddleware::class])->prefix('super')->group(function () {
+    Route::get('/dashboard/stats', [SuperAdminController::class, 'getDashboardStats']);
+    Route::get('/companies', [SuperAdminController::class, 'getCompanies']);
+    Route::get('/merchants', [SuperAdminController::class, 'getAllMerchants']);
+    Route::get('/transactions', [SuperAdminController::class, 'getAllTransactions']);
+    Route::get('/users', [SuperAdminController::class, 'getSuperUsers']);
+    Route::post('/users', [SuperAdminController::class, 'createSuperUser']);
+    Route::put('/users/{userId}', [SuperAdminController::class, 'updateSuperUser']);
+    Route::delete('/users/{userId}', [SuperAdminController::class, 'deleteSuperUser']);
 });
 
 //Charges routes
@@ -78,6 +87,7 @@ Route::middleware([JwtMiddleware::class])->group(function () {
     Route::get('/transactions/merchant-charges/{merchant_id}', [TransactionController::class, 'getMerchantCharges']); // Get merchant's charges
     Route::get('/transactions/all', [TransactionController::class, 'getAllTransactions']); // Get all transactions (admin only)
     Route::get('/transactions/details/{id}', [TransactionController::class, 'getTransactionDetails']); // Get transaction details
+    Route::get('/transactions/audits', [TransactionAuditController::class, 'index']); // Get transaction audit logs (admin/super)
     Route::post('/transactions/receipt', [TransactionController::class, 'generateReceipt'])
         ->middleware(['pdf.view'])
         ->withoutMiddleware(['web']); // Generate transaction receipt with PDF middleware
