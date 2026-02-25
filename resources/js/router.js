@@ -44,6 +44,43 @@ const routes = [
           path: 'transactions',
           name: 'transactions',
           component: () => import('./components/pages/Transactions.vue')
+        },
+        {
+          path: 'charges',
+          name: 'charges',
+          component: () => import('./components/pages/Charges.vue')
+        }
+      ]
+    },
+    {
+      path: '/super',
+      component: () => import('./components/SuperDashboard.vue'),
+      meta: { requiresAuth: true },
+      children: [
+        {
+          path: '',
+          name: 'super-dashboard',
+          component: () => import('./components/pages/SuperDashboardHome.vue')
+        },
+        {
+          path: 'merchants',
+          name: 'super-merchants',
+          component: () => import('./components/pages/SuperMerchants.vue')
+        },
+        {
+          path: 'charges',
+          name: 'super-charges',
+          component: () => import('./components/pages/SuperCharges.vue')
+        },
+        {
+          path: 'users',
+          name: 'super-users',
+          component: () => import('./components/pages/SuperUsers.vue')
+        },
+        {
+          path: 'transactions',
+          name: 'super-transactions',
+          component: () => import('./components/pages/SuperTransactions.vue')
         }
       ]
     },
@@ -71,9 +108,14 @@ router.beforeEach((to, from, next) => {
         return next('/login');
     }
 
-    // If user is logged in and tries to access login/register pages
+    // If user is logged in and tries to access login/register pages, redirect by role
     if (token && ['/login', '/register'].includes(to.path)) {
-        return next('/dashboard');
+        try {
+            const userData = JSON.parse(localStorage.getItem('user') || '{}');
+            return next(userData.role === 'SUPER' ? '/super' : '/dashboard');
+        } catch {
+            return next('/dashboard');
+        }
     }
 
     // If token exists, verify it's not expired

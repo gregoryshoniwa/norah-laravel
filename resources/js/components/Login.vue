@@ -144,9 +144,10 @@
             // Set default Authorization header for all future requests
             axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
 
-            // Redirect to dashboard
+            // Redirect based on role
+            const targetRoute = response.data.role === 'SUPER' ? '/super' : '/dashboard';
             setTimeout(() => {
-              this.$router.push('/dashboard');
+              this.$router.push(targetRoute);
             }, 1500);
           } else {
             console.error("Unexpected response:", response.data);

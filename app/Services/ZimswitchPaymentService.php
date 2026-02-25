@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Services\TransactionAuditService;
 
 class ZimswitchPaymentService
 {
@@ -11,13 +12,15 @@ class ZimswitchPaymentService
     protected $entityId;
     protected $authToken;
     protected $paymentBrand;
+    protected $transactionAuditService;
 
-    public function __construct()
+    public function __construct(TransactionAuditService $transactionAuditService)
     {
         $this->baseUrl = config('services.zimswitch.url');
         $this->entityId = config('services.zimswitch.entity_id');
         $this->authToken = config('services.zimswitch.auth_token');
         $this->paymentBrand = config('services.zimswitch.payment_brand');
+        $this->transactionAuditService = $transactionAuditService;
     }
 
     /**
@@ -29,6 +32,7 @@ class ZimswitchPaymentService
      */
     public function prepareCheckout($data)
     {
+        $trace = $data['trace'] ?? null;
         try {
             // Load auth configuration like the working implementation
             $authJsonPath = base_path('zimswitch/auth.json');
@@ -47,6 +51,16 @@ class ZimswitchPaymentService
                 'amount' => $data['amount'] ?? 'not_provided',
                 'total' => $data['total'] ?? 'not_provided',
                 'charge' => $data['charge'] ?? 'not_provided'
+            ]);
+            $this->audit([
+                'trace' => $trace,
+                'reference' => null,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'PROVIDER_REQUEST',
+                'event' => 'ZIMSWITCH_PREPARE_CHECKOUT_STARTED',
+                'level' => 'INFO',
+                'provider' => 'ZIMSWITCH',
+                'request_payload' => $data,
             ]);
 
             // Prepare checkout request using cURL exactly like working implementation
@@ -115,6 +129,15 @@ class ZimswitchPaymentService
                 'request_data' => $requestData,
                 'auth_config' => array_merge($authConfig, ['authorizationBearer' => '[HIDDEN]'])
             ]);
+            $this->audit([
+                'trace' => $trace,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'PROVIDER_RESPONSE',
+                'event' => 'ZIMSWITCH_PREPARE_CHECKOUT_RESPONSE',
+                'level' => 'INFO',
+                'provider' => 'ZIMSWITCH',
+                'response_payload' => $decodedData ?? ['raw' => $responseData],
+            ]);
 
             if (!$decodedData || !isset($decodedData['id'])) {
                 Log::error('Zimswitch checkout creation failed', [
@@ -143,6 +166,15 @@ class ZimswitchPaymentService
             ];
         } catch (\Exception $e) {
             Log::error('Zimswitch payment error: ' . $e->getMessage());
+            $this->audit([
+                'trace' => $trace,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'PROVIDER_EXCEPTION',
+                'event' => 'ZIMSWITCH_PREPARE_CHECKOUT_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'ZIMSWITCH',
+                'response_payload' => ['message' => $e->getMessage()],
+            ]);
             return [
                 'success' => false,
                 'error' => true,
@@ -161,6 +193,15 @@ class ZimswitchPaymentService
     public function checkPaymentStatus($resourcePath)
     {
         try {
+            $this->audit([
+                'trace' => null,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'PROVIDER_REQUEST',
+                'event' => 'ZIMSWITCH_RESOURCE_STATUS_REQUEST',
+                'level' => 'INFO',
+                'provider' => 'ZIMSWITCH',
+                'request_payload' => ['resourcePath' => $resourcePath],
+            ]);
             // Load auth configuration
             $authJsonPath = base_path('zimswitch/auth.json');
             if (!file_exists($authJsonPath)) {
@@ -216,6 +257,20 @@ class ZimswitchPaymentService
                 'isSuccess' => $isSuccess,
                 'fullResponse' => $decodedData
             ]);
+            $this->audit([
+                'trace' => null,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'PROVIDER_RESPONSE',
+                'event' => 'ZIMSWITCH_RESOURCE_STATUS_RESPONSE',
+                'level' => 'INFO',
+                'provider' => 'ZIMSWITCH',
+                'response_payload' => [
+                    'resourcePath' => $resourcePath,
+                    'resultCode' => $resultCode,
+                    'resultDescription' => $resultDescription,
+                    'isSuccess' => (bool) $isSuccess,
+                ],
+            ]);
 
             return [
                 'success' => (bool)$isSuccess,
@@ -231,6 +286,15 @@ class ZimswitchPaymentService
 
         } catch (\Exception $e) {
             Log::error('Zimswitch payment status check error: ' . $e->getMessage());
+            $this->audit([
+                'trace' => null,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'PROVIDER_EXCEPTION',
+                'event' => 'ZIMSWITCH_RESOURCE_STATUS_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'ZIMSWITCH',
+                'response_payload' => ['message' => $e->getMessage()],
+            ]);
             return [
                 'success' => false,
                 'error' => true,
@@ -248,6 +312,16 @@ class ZimswitchPaymentService
     public function getPaymentStatus($checkoutId)
     {
         try {
+            $this->audit([
+                'trace' => null,
+                'reference' => $checkoutId,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'PROVIDER_REQUEST',
+                'event' => 'ZIMSWITCH_CHECKOUT_STATUS_REQUEST',
+                'level' => 'INFO',
+                'provider' => 'ZIMSWITCH',
+                'request_payload' => ['checkoutId' => $checkoutId],
+            ]);
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->authToken
             ])->get($this->baseUrl . '/v1/checkouts/' . $checkoutId . '/payment', [
@@ -257,6 +331,17 @@ class ZimswitchPaymentService
             $responseData = $response->json();
 
             if ($response->successful()) {
+                $this->audit([
+                    'trace' => null,
+                    'reference' => $checkoutId,
+                    'payment_method' => 'ZIMSWITCH',
+                    'stage' => 'PROVIDER_RESPONSE',
+                    'event' => 'ZIMSWITCH_CHECKOUT_STATUS_RESPONSE',
+                    'level' => 'INFO',
+                    'provider' => 'ZIMSWITCH',
+                    'status_code' => $response->status(),
+                    'response_payload' => $responseData,
+                ]);
                 $isSuccess = isset($responseData['result']['code']) &&
                             $responseData['result']['code'] === '000.100.110';
 
@@ -279,11 +364,26 @@ class ZimswitchPaymentService
             ];
         } catch (\Exception $e) {
             Log::error('Zimswitch payment status error: ' . $e->getMessage());
+            $this->audit([
+                'trace' => null,
+                'reference' => $checkoutId,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'PROVIDER_EXCEPTION',
+                'event' => 'ZIMSWITCH_CHECKOUT_STATUS_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'ZIMSWITCH',
+                'response_payload' => ['message' => $e->getMessage()],
+            ]);
             return [
                 'success' => false,
                 'error' => true,
                 'message' => 'An error occurred while checking payment status: ' . $e->getMessage()
             ];
         }
+    }
+
+    private function audit(array $data): void
+    {
+        $this->transactionAuditService->record($data);
     }
 }

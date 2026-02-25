@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Services\TransactionAuditService;
 
 class IVeriPaymentService
 {
@@ -14,8 +15,9 @@ class IVeriPaymentService
     protected $userGroupNumber;
     protected $mode;
     protected $version;
+    protected $transactionAuditService;
 
-    public function __construct()
+    public function __construct(TransactionAuditService $transactionAuditService)
     {
         $this->baseUrl = config('services.iveri.url');
         $this->applicationId = config('services.iveri.application_id');
@@ -23,6 +25,7 @@ class IVeriPaymentService
         $this->userGroupNumber = config('services.iveri.user_group');
         $this->mode = config('services.iveri.mode', 'TEST');
         $this->version = config('services.iveri.version', '1.0');
+        $this->transactionAuditService = $transactionAuditService;
     }
 
     /**
@@ -93,6 +96,17 @@ class IVeriPaymentService
             'amount' => $amount,
             'currency' => $data['currency'] ?? 'USD',
         ]);
+        $this->audit([
+            'trace' => $transactionId,
+            'reference' => $transactionId,
+            'payment_method' => 'VISA_MASTER',
+            'stage' => 'PROVIDER_REQUEST',
+            'event' => 'IVERI_PAYMENT_REQUEST_SENT',
+            'level' => 'INFO',
+            'provider' => 'IVERI',
+            'endpoint' => $this->baseUrl . '/api/transactions',
+            'request_payload' => $payload,
+        ]);
 
         try {
             // Make the API request to the transactions endpoint as used in Java app
@@ -105,6 +119,18 @@ class IVeriPaymentService
             Log::debug('iVeri payment response', [
                 'status' => $response->status(),
                 'body' => $response->json()
+            ]);
+            $this->audit([
+                'trace' => $transactionId,
+                'reference' => $transactionId,
+                'payment_method' => 'VISA_MASTER',
+                'stage' => 'PROVIDER_RESPONSE',
+                'event' => 'IVERI_PAYMENT_RESPONSE_RECEIVED',
+                'level' => $response->successful() ? 'INFO' : 'ERROR',
+                'provider' => 'IVERI',
+                'endpoint' => $this->baseUrl . '/api/transactions',
+                'status_code' => $response->status(),
+                'response_payload' => $response->json() ?? ['raw' => $response->body()],
             ]);
 
             $responseData = $response->json();
@@ -203,6 +229,17 @@ class IVeriPaymentService
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+            $this->audit([
+                'trace' => $transactionId,
+                'reference' => $transactionId,
+                'payment_method' => 'VISA_MASTER',
+                'stage' => 'PROVIDER_EXCEPTION',
+                'event' => 'IVERI_PAYMENT_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'IVERI',
+                'endpoint' => $this->baseUrl . '/api/transactions',
+                'response_payload' => ['message' => $e->getMessage()],
+            ]);
 
             return [
                 'success' => false,
@@ -242,12 +279,35 @@ class IVeriPaymentService
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json'
             ])->post($this->baseUrl . '/api/transactions', $payload);
+            $this->audit([
+                'trace' => $transactionIndex,
+                'reference' => $transactionIndex,
+                'payment_method' => 'VISA_MASTER',
+                'stage' => 'PROVIDER_REQUEST',
+                'event' => 'IVERI_STATUS_REQUEST_SENT',
+                'level' => 'INFO',
+                'provider' => 'IVERI',
+                'endpoint' => $this->baseUrl . '/api/transactions',
+                'request_payload' => $payload,
+            ]);
 
             // Log the response for debugging
             Log::debug('iVeri payment status check', [
                 'transactionIndex' => $transactionIndex,
                 'status' => $response->status(),
                 'body' => $response->json()
+            ]);
+            $this->audit([
+                'trace' => $transactionIndex,
+                'reference' => $transactionIndex,
+                'payment_method' => 'VISA_MASTER',
+                'stage' => 'PROVIDER_RESPONSE',
+                'event' => 'IVERI_STATUS_RESPONSE_RECEIVED',
+                'level' => $response->successful() ? 'INFO' : 'ERROR',
+                'provider' => 'IVERI',
+                'endpoint' => $this->baseUrl . '/api/transactions',
+                'status_code' => $response->status(),
+                'response_payload' => $response->json() ?? ['raw' => $response->body()],
             ]);
 
             $responseData = $response->json();
@@ -290,6 +350,17 @@ class IVeriPaymentService
             Log::error('iVeri payment status check error', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
+            ]);
+            $this->audit([
+                'trace' => $transactionIndex,
+                'reference' => $transactionIndex,
+                'payment_method' => 'VISA_MASTER',
+                'stage' => 'PROVIDER_EXCEPTION',
+                'event' => 'IVERI_STATUS_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'IVERI',
+                'endpoint' => $this->baseUrl . '/api/transactions',
+                'response_payload' => ['message' => $e->getMessage()],
             ]);
 
             return [
@@ -357,6 +428,17 @@ class IVeriPaymentService
             'payload' => json_encode($payload),
             'url' => $this->baseUrl . '/api/transactions'
         ]);
+        $this->audit([
+            'trace' => $transactionId,
+            'reference' => $transactionIndex,
+            'payment_method' => 'VISA_MASTER',
+            'stage' => 'PROVIDER_REQUEST',
+            'event' => 'IVERI_3DS_ENROLLMENT_REQUEST_SENT',
+            'level' => 'INFO',
+            'provider' => 'IVERI',
+            'endpoint' => $this->baseUrl . '/api/transactions',
+            'request_payload' => $payload,
+        ]);
 
         try {
             // Make the API request to iVeri
@@ -371,6 +453,18 @@ class IVeriPaymentService
             Log::debug('iVeri 3DS enrollment response', [
                 'status' => $response->status(),
                 'body' => $response->body()
+            ]);
+            $this->audit([
+                'trace' => $transactionId,
+                'reference' => $transactionIndex,
+                'payment_method' => 'VISA_MASTER',
+                'stage' => 'PROVIDER_RESPONSE',
+                'event' => 'IVERI_3DS_ENROLLMENT_RESPONSE_RECEIVED',
+                'level' => $response->successful() ? 'INFO' : 'ERROR',
+                'provider' => 'IVERI',
+                'endpoint' => $this->baseUrl . '/api/transactions',
+                'status_code' => $response->status(),
+                'response_payload' => $responseData,
             ]);
 
             if ($response->successful()) {
@@ -430,6 +524,17 @@ class IVeriPaymentService
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+            $this->audit([
+                'trace' => $transactionId,
+                'reference' => $transactionIndex,
+                'payment_method' => 'VISA_MASTER',
+                'stage' => 'PROVIDER_EXCEPTION',
+                'event' => 'IVERI_3DS_ENROLLMENT_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'IVERI',
+                'endpoint' => $this->baseUrl . '/api/transactions',
+                'response_payload' => ['message' => $e->getMessage()],
+            ]);
 
             // Return error response
             return [
@@ -439,5 +544,10 @@ class IVeriPaymentService
                 'trace' => $transactionId
             ];
         }
+    }
+
+    private function audit(array $data): void
+    {
+        $this->transactionAuditService->record($data);
     }
 }

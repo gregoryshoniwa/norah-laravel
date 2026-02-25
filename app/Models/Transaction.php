@@ -52,4 +52,9 @@ class Transaction extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function audits()
+    {
+        return $this->hasMany(TransactionAudit::class)->orderBy('created_at');
+    }
 }

@@ -5,28 +5,44 @@ namespace App\Services;
 use App\Models\Merchant;
 use Illuminate\Support\Facades\Http;
 use App\Models\User;
+use Throwable;
 
 class EcoCashPaymentService
 {
     protected $url;
     protected $username;
     protected $password;
+    protected $transactionAuditService;
 
-    public function __construct()
+    public function __construct(TransactionAuditService $transactionAuditService)
     {
         $this->url = config('services.ecocash.url');
         $this->username = config('services.ecocash.username');
         $this->password = config('services.ecocash.password');
+        $this->transactionAuditService = $transactionAuditService;
     }
 
     public function createPaymentRequest(array $request)
     {
         $auth = base64_encode("{$this->username}:{$this->password}");
         $reference = "NPG_" . time();
+        $trace = $request['_auditTrace'] ?? null;
 
         $user = User::where('email', $request['user'])->first();
          // Check if the user exists
          if (!$user) {
+            $this->audit([
+                'user_id' => null,
+                'trace' => $trace,
+                'reference' => $reference,
+                'payment_method' => 'ECOCASH',
+                'stage' => 'VALIDATION',
+                'event' => 'USER_NOT_FOUND',
+                'level' => 'ERROR',
+                'provider' => 'ECOCASH',
+                'request_payload' => $request,
+                'response_payload' => ['message' => 'User not found.'],
+            ]);
             throw new \Exception('User not found.');
         }
 
@@ -35,11 +51,33 @@ class EcoCashPaymentService
             $merchant = Merchant::where('user_id', $user->id)->first();
                 // Check if the user has a web service URL
                 if (!$merchant->web_service_url) {
+                    $this->audit([
+                        'user_id' => $user->id,
+                        'trace' => $trace,
+                        'reference' => $reference,
+                        'payment_method' => 'ECOCASH',
+                        'stage' => 'VALIDATION',
+                        'event' => 'MISSING_WEBHOOK_URL',
+                        'level' => 'ERROR',
+                        'provider' => 'ECOCASH',
+                        'request_payload' => $request,
+                    ]);
                     throw new \Exception('Configuration error : web_service_url is missing.');
                 }
         }else{
             // Check if the user has a web service URL
             if (!$user->web_service_url) {
+                $this->audit([
+                    'user_id' => $user->id,
+                    'trace' => $trace,
+                    'reference' => $reference,
+                    'payment_method' => 'ECOCASH',
+                    'stage' => 'VALIDATION',
+                    'event' => 'MISSING_WEBHOOK_URL',
+                    'level' => 'ERROR',
+                    'provider' => 'ECOCASH',
+                    'request_payload' => $request,
+                ]);
                 throw new \Exception('Configuration error : web_service_url is missing.');
             }
         }
@@ -77,31 +115,135 @@ class EcoCashPaymentService
             "merchantName" => "Noarh Payment Gateway"
         ];
 
-         // Send the transformed request to the EcoCash API
-        $response = Http::withHeaders([
-            'Authorization' => "Basic {$auth}",
-            'Content-Type' => 'application/json',
-        ])->post("{$this->url}/transactions/amount", $apiRequest);
+        $endpoint = "{$this->url}/transactions/amount";
+        $this->audit([
+            'transaction_id' => null,
+            'user_id' => $user->id,
+            'trace' => $trace,
+            'reference' => $reference,
+            'payment_method' => 'ECOCASH',
+            'stage' => 'PROVIDER_REQUEST',
+            'event' => 'ECOCASH_CREATE_PAYMENT_REQUEST_SENT',
+            'level' => 'INFO',
+            'provider' => 'ECOCASH',
+            'endpoint' => $endpoint,
+            'request_payload' => $apiRequest,
+        ]);
 
-        if ($response->successful()) {
-            return $response->json();
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => "Basic {$auth}",
+                'Content-Type' => 'application/json',
+            ])->post($endpoint, $apiRequest);
+
+            $this->audit([
+                'transaction_id' => null,
+                'user_id' => $user->id,
+                'trace' => $trace,
+                'reference' => $reference,
+                'payment_method' => 'ECOCASH',
+                'stage' => 'PROVIDER_RESPONSE',
+                'event' => 'ECOCASH_CREATE_PAYMENT_RESPONSE_RECEIVED',
+                'level' => $response->successful() ? 'INFO' : 'ERROR',
+                'provider' => 'ECOCASH',
+                'endpoint' => $endpoint,
+                'status_code' => $response->status(),
+                'request_payload' => $apiRequest,
+                'response_payload' => $response->json() ?? ['raw' => $response->body()],
+            ]);
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            throw new \Exception('EcoCash payment request failed: ' . $response->body());
+        } catch (Throwable $e) {
+            $this->audit([
+                'transaction_id' => null,
+                'user_id' => $user->id,
+                'trace' => $trace,
+                'reference' => $reference,
+                'payment_method' => 'ECOCASH',
+                'stage' => 'PROVIDER_EXCEPTION',
+                'event' => 'ECOCASH_CREATE_PAYMENT_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'ECOCASH',
+                'endpoint' => $endpoint,
+                'request_payload' => $apiRequest,
+                'response_payload' => ['message' => $e->getMessage()],
+            ]);
+
+            throw $e;
         }
-
-        throw new \Exception('EcoCash payment request failed: ' . $response->body());
     }
 
-    public function inquirePaymentRequest(string $phoneNumber, string $clientCorrelator)
+    public function inquirePaymentRequest(string $phoneNumber, string $clientCorrelator, ?string $trace = null)
     {
         $auth = base64_encode("{$this->username}:{$this->password}");
+        $endpoint = "{$this->url}/{$phoneNumber}/transactions/amount/{$clientCorrelator}";
+        $auditTrace = $trace ?? $clientCorrelator;
 
-        $response = Http::withHeaders([
-            'Authorization' => "Basic {$auth}",
-        ])->get("{$this->url}/{$phoneNumber}/transactions/amount/{$clientCorrelator}");
+        $this->audit([
+            'trace' => $auditTrace,
+            'reference' => $clientCorrelator,
+            'payment_method' => 'ECOCASH',
+            'stage' => 'PROVIDER_REQUEST',
+            'event' => 'ECOCASH_INQUIRY_REQUEST_SENT',
+            'level' => 'INFO',
+            'provider' => 'ECOCASH',
+            'endpoint' => $endpoint,
+            'request_payload' => [
+                'phoneNumber' => $phoneNumber,
+                'clientCorrelator' => $clientCorrelator,
+            ],
+        ]);
 
-        if ($response->successful()) {
-            return $response->json();
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => "Basic {$auth}",
+            ])->get($endpoint);
+
+            $this->audit([
+                'trace' => $auditTrace,
+                'reference' => $clientCorrelator,
+                'payment_method' => 'ECOCASH',
+                'stage' => 'PROVIDER_RESPONSE',
+                'event' => 'ECOCASH_INQUIRY_RESPONSE_RECEIVED',
+                'level' => $response->successful() ? 'INFO' : 'ERROR',
+                'provider' => 'ECOCASH',
+                'endpoint' => $endpoint,
+                'status_code' => $response->status(),
+                'request_payload' => [
+                    'phoneNumber' => $phoneNumber,
+                    'clientCorrelator' => $clientCorrelator,
+                ],
+                'response_payload' => $response->json() ?? ['raw' => $response->body()],
+            ]);
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            throw new \Exception('EcoCash inquiry request failed: ' . $response->body());
+        } catch (Throwable $e) {
+            $this->audit([
+                'trace' => $auditTrace,
+                'reference' => $clientCorrelator,
+                'payment_method' => 'ECOCASH',
+                'stage' => 'PROVIDER_EXCEPTION',
+                'event' => 'ECOCASH_INQUIRY_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'ECOCASH',
+                'endpoint' => $endpoint,
+                'response_payload' => ['message' => $e->getMessage()],
+            ]);
+
+            throw $e;
         }
+    }
 
-        throw new \Exception('EcoCash inquiry request failed: ' . $response->body());
+    private function audit(array $data): void
+    {
+        $this->transactionAuditService->record($data);
     }
 }
