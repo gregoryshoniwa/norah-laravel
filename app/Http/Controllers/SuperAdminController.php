@@ -34,6 +34,7 @@ class SuperAdminController extends Controller
     public function getDashboardStats(Request $request)
     {
         $this->requireSuper();
+        $currency = $request->input('currency', 'USD');
 
         $companies = User::where('role', 'ADMIN')
             ->distinct('company_name')
@@ -42,23 +43,27 @@ class SuperAdminController extends Controller
         $totalMerchants = Merchant::count();
         $activeMerchants = Merchant::where('merchant_status', 'ACTIVE')->count();
 
-        $totalTransactions = Transaction::whereIn('type', ['PAYMENT'])->count();
+        $totalTransactions = Transaction::whereIn('type', ['PAYMENT'])
+            ->where('currency', $currency)
+            ->count();
         $totalVolume = Transaction::whereIn('type', ['PAYMENT'])
             ->where('status', 'COMPLETED')
+            ->where('currency', $currency)
             ->sum('numeric_amount');
 
-        $completedCount = Transaction::where('type', 'PAYMENT')->where('status', 'COMPLETED')->count();
-        $pendingCount = Transaction::where('type', 'PAYMENT')->where('status', 'PENDING')->count();
-        $failedCount = Transaction::where('type', 'PAYMENT')->where('status', 'FAILED')->count();
+        $completedCount = Transaction::where('type', 'PAYMENT')->where('status', 'COMPLETED')->where('currency', $currency)->count();
+        $pendingCount = Transaction::where('type', 'PAYMENT')->where('status', 'PENDING')->where('currency', $currency)->count();
+        $failedCount = Transaction::where('type', 'PAYMENT')->where('status', 'FAILED')->where('currency', $currency)->count();
 
         $superUsers = User::where('role', 'SUPER')->count();
 
         // Total profit = system charges + merchant charges (our revenue from charges)
-        $systemCharges = Transaction::where('type', 'SYSTEM_CHARGE')->where('status', 'COMPLETED')->sum('amount');
-        $merchantCharges = Transaction::where('type', 'MERCHANT_CHARGE')->where('status', 'COMPLETED')->sum('amount');
+        $systemCharges = Transaction::where('type', 'SYSTEM_CHARGE')->where('status', 'COMPLETED')->where('currency', $currency)->sum('amount');
+        $merchantCharges = Transaction::where('type', 'MERCHANT_CHARGE')->where('status', 'COMPLETED')->where('currency', $currency)->sum('amount');
         $totalProfit = $systemCharges + $merchantCharges;
 
         $recentTransactions = Transaction::whereIn('type', ['PAYMENT'])
+            ->where('currency', $currency)
             ->with('user:id,email,company_name')
             ->orderByDesc('created_at')
             ->limit(10)
@@ -66,6 +71,7 @@ class SuperAdminController extends Controller
 
         $volumeByMethod = Transaction::where('type', 'PAYMENT')
             ->where('status', 'COMPLETED')
+            ->where('currency', $currency)
             ->select('payment_method', DB::raw('SUM(numeric_amount) as total'), DB::raw('COUNT(*) as count'))
             ->groupBy('payment_method')
             ->get();
@@ -83,6 +89,7 @@ class SuperAdminController extends Controller
                 'pending' => $pendingCount,
                 'failed' => $failedCount,
                 'superUsers' => $superUsers,
+                'currency' => $currency,
                 'recentTransactions' => $recentTransactions,
                 'volumeByMethod' => $volumeByMethod,
             ],
@@ -159,6 +166,10 @@ class SuperAdminController extends Controller
 
         if ($request->filled('end_date')) {
             $query->whereDate('created_at', '<=', $request->input('end_date'));
+        }
+
+        if ($request->filled('currency')) {
+            $query->where('currency', $request->input('currency'));
         }
 
         $transactions = $query->orderByDesc('created_at')->paginate($perPage);

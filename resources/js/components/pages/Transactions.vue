@@ -22,6 +22,9 @@
           <option value="ZIMSWITCH">ZimSwitch</option>
           <option value="VISA_MASTER">Visa/Master</option>
         </select>
+        <select v-model="currency" class="status-filter" @change="handleCurrencyChange">
+          <option v-for="code in currencies" :key="code" :value="code">{{ code }}</option>
+        </select>
         <button class="btn-primary" @click="applyFilters">
           <i class="ri-filter-3-line"></i>
           Apply
@@ -489,6 +492,7 @@ export default {
       itemsPerPage: 10,
       totalItems: 0,
       currency: 'USD',
+      currencies: ['USD', 'ZWG', 'ZAR', 'BWP', 'EUR', 'GBP'],
       userRole: null,
 
       auditModal: {
@@ -582,6 +586,10 @@ export default {
       this.loadTransactions();
     },
     applyFilters() {
+      this.currentPage = 1;
+      this.loadTransactions();
+    },
+    handleCurrencyChange() {
       this.currentPage = 1;
       this.loadTransactions();
     },

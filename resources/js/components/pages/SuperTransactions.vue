@@ -22,6 +22,9 @@
           <option value="ZIMSWITCH">ZIMSWITCH</option>
           <option value="VISA_MASTER">VISA_MASTER</option>
         </select>
+        <select v-model="selectedCurrency" class="filter-select" @change="handleCurrencyChange">
+          <option v-for="code in currencies" :key="code" :value="code">{{ code }}</option>
+        </select>
         <button class="btn-apply" @click="applyFilters">
           <i class="ri-filter-3-line"></i> Apply
         </button>
@@ -33,7 +36,7 @@
       <div class="stat-card">
         <div class="stat-info">
           <h3>Volume (to Customer)</h3>
-          <p class="stat-value">{{ formatAmount(stats.totalVolume, 'USD') }}</p>
+          <p class="stat-value">{{ formatAmount(stats.totalVolume, selectedCurrency) }}</p>
           <span class="stat-hint">Amount to send to customer</span>
         </div>
         <div class="stat-icon"><i class="ri-money-dollar-circle-line"></i></div>
@@ -41,7 +44,7 @@
       <div class="stat-card accent">
         <div class="stat-info">
           <h3>Total Profit (Charges)</h3>
-          <p class="stat-value">{{ formatAmount(stats.totalProfit, 'USD') }}</p>
+          <p class="stat-value">{{ formatAmount(stats.totalProfit, selectedCurrency) }}</p>
           <span class="stat-hint">Our revenue from charges</span>
         </div>
         <div class="stat-icon"><i class="ri-line-chart-line"></i></div>
@@ -71,8 +74,6 @@
               <th>Our Charge</th>
               <th>Method</th>
               <th>Company</th>
-              <th>Merchant</th>
-              <th>User</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -89,8 +90,6 @@
                 </span>
               </td>
               <td>{{ txn.company_name || '—' }}</td>
-              <td>{{ merchantName(txn) }}</td>
-              <td>{{ txn.user_name || userEmail(txn) || '—' }}</td>
               <td>
                 <span :class="['status-badge', statusClass(txn.status)]">
                   {{ txn.status }}
@@ -108,7 +107,7 @@
           </tbody>
           <tbody v-else-if="loading">
             <tr>
-              <td colspan="10" class="text-center">
+              <td colspan="8" class="text-center">
                 <div class="loading-spinner">
                   <i class="ri-loader-4-line spin"></i> Loading...
                 </div>
@@ -117,7 +116,7 @@
           </tbody>
           <tbody v-else>
             <tr>
-              <td colspan="10" class="empty-state">
+              <td colspan="8" class="empty-state">
                 <i class="ri-inbox-line empty-icon"></i>
                 <p>No transactions found</p>
               </td>
@@ -440,6 +439,8 @@ export default {
       perPage: 15,
       totalItems: 0,
       lastPage: 1,
+      selectedCurrency: 'USD',
+      currencies: ['USD', 'ZWG', 'ZAR', 'BWP', 'EUR', 'GBP'],
 
       auditModal: {
         visible: false,
@@ -530,9 +531,16 @@ export default {
       this.currentPage = 1;
       this.loadTransactions();
     },
+    handleCurrencyChange() {
+      this.currentPage = 1;
+      this.loadTransactions();
+      this.loadStats();
+    },
     async loadStats() {
       try {
-        const res = await axios.get('/api/v1/super/dashboard/stats');
+        const res = await axios.get('/api/v1/super/dashboard/stats', {
+          params: { currency: this.selectedCurrency }
+        });
         if (res.data.success) {
           this.stats = {
             totalVolume: res.data.data.totalVolume ?? 0,
@@ -553,6 +561,7 @@ export default {
             payment_method: this.filters.payment_method,
             start_date: this.filters.start_date,
             end_date: this.filters.end_date,
+            currency: this.selectedCurrency,
             page: this.currentPage,
             per_page: this.perPage
           }

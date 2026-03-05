@@ -592,7 +592,8 @@ class TransactionController extends Controller
                 'trace' => $originalTransaction->trace,
                 'reference' => $originalTransaction->reference,
                 'currency' => $originalTransaction->currency,
-                'amount' => number_format((float) $originalTransaction->amount + (float) $originalTransaction->charge, 2, '.', ''),
+                // Keep customer amount and charge separate.
+                'amount' => number_format((float) $originalTransaction->amount, 2, '.', ''),
                 'charge' => $originalTransaction->charge,
                 'status' => 'COMPLETED',
                 'payment_method' => $originalTransaction->payment_method,
@@ -1211,27 +1212,40 @@ class TransactionController extends Controller
     public function getDashboardStats(Request $request)
     {
         $user = JWTAuth::user();
+        $currency = $request->get('currency', '');
 
         try {
             // Calculate total volume
-            $totalVolume = Transaction::where('type', 'PAYMENT')
-                ->where('status', 'COMPLETED')
-                ->sum('amount');
+            $totalVolumeQuery = Transaction::where('type', 'PAYMENT')
+                ->where('status', 'COMPLETED');
+            if (!empty($currency)) {
+                $totalVolumeQuery->where('currency', $currency);
+            }
+            $totalVolume = $totalVolumeQuery->sum('amount');
 
             // Count total transactions
-            $totalTransactions = Transaction::where('type', 'PAYMENT')
-                ->where('status', 'COMPLETED')
-                ->count();
+            $totalTransactionsQuery = Transaction::where('type', 'PAYMENT')
+                ->where('status', 'COMPLETED');
+            if (!empty($currency)) {
+                $totalTransactionsQuery->where('currency', $currency);
+            }
+            $totalTransactions = $totalTransactionsQuery->count();
 
             // Get system charges total (our profit)
-            $systemCharges = Transaction::where('type', 'SYSTEM_CHARGE')
-                ->where('status', 'COMPLETED')
-                ->sum('amount');
+            $systemChargesQuery = Transaction::where('type', 'SYSTEM_CHARGE')
+                ->where('status', 'COMPLETED');
+            if (!empty($currency)) {
+                $systemChargesQuery->where('currency', $currency);
+            }
+            $systemCharges = $systemChargesQuery->sum('amount');
 
             // Get merchant charges total (our profit)
-            $merchantCharges = Transaction::where('type', 'MERCHANT_CHARGE')
-                ->where('status', 'COMPLETED')
-                ->sum('amount');
+            $merchantChargesQuery = Transaction::where('type', 'MERCHANT_CHARGE')
+                ->where('status', 'COMPLETED');
+            if (!empty($currency)) {
+                $merchantChargesQuery->where('currency', $currency);
+            }
+            $merchantCharges = $merchantChargesQuery->sum('amount');
 
             // Total profit = sum of all charges collected
             $totalProfit = $systemCharges + $merchantCharges;
@@ -1259,6 +1273,7 @@ class TransactionController extends Controller
         $user = JWTAuth::user();
         $search = $request->get('search', '');
         $perPage = $request->get('per_page', 10);
+        $currency = $request->get('currency', '');
 
         try {
             $query = Transaction::whereIn('type', ['PAYMENT'])
@@ -1272,6 +1287,10 @@ class TransactionController extends Controller
                           ->orWhere('currency', 'LIKE', "%{$search}%");
                     }
                 });
+
+            if (!empty($currency)) {
+                $query->where('currency', $currency);
+            }
 
             $query->orderBy('created_at', 'desc');
 
@@ -1311,8 +1330,12 @@ class TransactionController extends Controller
         try {
             // If we just need to count transactions by status
             if ($countByStatus) {
-                $counts = Transaction::whereIn('type', ['PAYMENT'])
-                    ->select('status', DB::raw('count(*) as count'))
+                $statusQuery = Transaction::whereIn('type', ['PAYMENT']);
+                if (!empty($currency)) {
+                    $statusQuery->where('currency', $currency);
+                }
+
+                $counts = $statusQuery->select('status', DB::raw('count(*) as count'))
                     ->groupBy('status')
                     ->pluck('count', 'status')
                     ->toArray();
@@ -1836,12 +1859,12 @@ class TransactionController extends Controller
             // Use the checkout ID to get the payment status
             $paymentStatus = $this->zimswitchService->getPaymentStatus($checkoutId);
 
-            // Find the transaction associated with this payment
-            // Note: The merchant transaction ID is stored in our trace field
-            $transaction = Transaction::where('payment_method', 'ZIMSWITCH')
-                            ->whereIn('type', ['CONFIRM'])
-                            ->orderBy('created_at', 'desc')
-                            ->first();
+            // Find the exact pending ZIMSWITCH confirmation transaction.
+            $transaction = $this->findZimswitchConfirmTransaction(
+                $request->query('trace'),
+                $checkoutId,
+                $resourcePath
+            );
 
             if (!$transaction) {
                 return response()->view('payment.error', [
@@ -2325,19 +2348,13 @@ class TransactionController extends Controller
             // or by looking for recent ZIMSWITCH CONFIRM transactions
             $transaction = null;
 
-            // Try to find transaction by looking for recent ZIMSWITCH CONFIRM transactions
-            // This is a fallback method - ideally we'd have the trace in the payment data
-            $recentTransaction = Transaction::where('payment_method', 'ZIMSWITCH')
-                ->where('type', 'CONFIRM')
-                ->where('status', 'PENDING')
-                ->where('amount', $amount)
-                ->where('currency', $currency)
-                ->orderBy('created_at', 'desc')
-                ->first();
-
-            if ($recentTransaction) {
-                $transaction = $recentTransaction;
-            }
+            $transaction = $this->findZimswitchConfirmTransaction(
+                $request->input('trace'),
+                null,
+                $resourcePath,
+                $amount,
+                $currency
+            );
 
             if (!$transaction) {
                 Log::warning('ZimSwitch payment successful but no matching transaction found', [
@@ -2345,20 +2362,8 @@ class TransactionController extends Controller
                     'resourcePath' => $resourcePath
                 ]);
 
-                // Create a new transaction record for successful payment
-                $transaction = new Transaction();
-                $transaction->type = 'PAYMENT';
-                $transaction->status = 'COMPLETED';
-                $transaction->payment_method = 'ZIMSWITCH';
-                $transaction->amount = $amount;
-                $transaction->currency = $currency;
-                $transaction->reference = $transactionId;
-                $transaction->response_code = '00';
-                $transaction->response = json_encode($paymentData);
-                $transaction->trace = Str::uuid()->toString();
-                $transaction->save();
-
-                return redirect('/payment/success?reference=' . $transaction->reference);
+                // Do not create orphan payment transactions without owner metadata.
+                return redirect('/payment/error?message=Matching transaction not found for this payment');
             }
 
             // Prepare payment response data for finalization
@@ -2398,5 +2403,61 @@ class TransactionController extends Controller
     protected function audit(array $data): void
     {
         $this->transactionAuditService->record($data);
+    }
+
+    private function findZimswitchConfirmTransaction(
+        ?string $trace = null,
+        ?string $checkoutId = null,
+        ?string $resourcePath = null,
+        $amount = null,
+        ?string $currency = null
+    ): ?Transaction {
+        if (!empty($trace)) {
+            $byTrace = Transaction::where('trace', $trace)
+                ->where('payment_method', 'ZIMSWITCH')
+                ->where('type', 'CONFIRM')
+                ->orderBy('created_at', 'desc')
+                ->first();
+            if ($byTrace) {
+                return $byTrace;
+            }
+        }
+
+        $resolvedCheckoutId = $checkoutId ?: $this->extractCheckoutIdFromResourcePath($resourcePath);
+        if (!empty($resolvedCheckoutId)) {
+            $byReference = Transaction::where('payment_method', 'ZIMSWITCH')
+                ->where('type', 'CONFIRM')
+                ->where('reference', $resolvedCheckoutId)
+                ->orderBy('created_at', 'desc')
+                ->first();
+            if ($byReference) {
+                return $byReference;
+            }
+        }
+
+        if ($amount !== null && !empty($currency)) {
+            return Transaction::where('payment_method', 'ZIMSWITCH')
+                ->where('type', 'CONFIRM')
+                ->where('status', 'PENDING')
+                ->where('amount', number_format((float) $amount, 2, '.', ''))
+                ->where('currency', $currency)
+                ->orderBy('created_at', 'desc')
+                ->first();
+        }
+
+        return null;
+    }
+
+    private function extractCheckoutIdFromResourcePath(?string $resourcePath): ?string
+    {
+        if (empty($resourcePath)) {
+            return null;
+        }
+
+        if (preg_match('#/checkouts/([^/]+)/payment#', $resourcePath, $matches)) {
+            return $matches[1] ?? null;
+        }
+
+        return null;
     }
 }

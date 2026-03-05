@@ -243,6 +243,12 @@ export default {
     handlePageChange(page) {
       this.currentPage = page;
       this.loadTransactions();
+    },
+
+    handleCurrencyChange() {
+      this.currentPage = 1;
+      this.loadDashboardStats();
+      this.loadTransactions();
     }
   }
 };

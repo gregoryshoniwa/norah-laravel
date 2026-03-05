@@ -2,8 +2,16 @@
   <div class="super-dashboard-home">
     <!-- Page Header -->
     <header class="page-header">
-      <h1>Norah Payment Gateway</h1>
-      <p class="subtitle">Super Admin Dashboard</p>
+      <div>
+        <h1>Norah Payment Gateway</h1>
+        <p class="subtitle">Super Admin Dashboard</p>
+      </div>
+      <div class="currency-selector">
+        <label for="super-dashboard-currency">Currency</label>
+        <select id="super-dashboard-currency" v-model="selectedCurrency" @change="handleCurrencyChange">
+          <option v-for="code in currencies" :key="code" :value="code">{{ code }}</option>
+        </select>
+      </div>
     </header>
 
     <!-- Stats Grid -->
@@ -130,7 +138,9 @@ export default {
       },
       companies: [],
       loadingStats: true,
-      loadingCompanies: true
+      loadingCompanies: true,
+      selectedCurrency: 'USD',
+      currencies: ['USD', 'ZWG', 'ZAR', 'BWP', 'EUR', 'GBP']
     };
   },
 
@@ -171,10 +181,10 @@ export default {
       }
     },
 
-    formatUsd(amount) {
+    formatUsd(amount, currency = null) {
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: 'USD'
+        currency: currency || this.selectedCurrency
       }).format(amount ?? 0);
     },
 
@@ -200,10 +210,16 @@ export default {
       return '';
     },
 
+    handleCurrencyChange() {
+      this.loadStats();
+    },
+
     async loadStats() {
       this.loadingStats = true;
       try {
-        const res = await axios.get('/api/v1/super/dashboard/stats');
+        const res = await axios.get('/api/v1/super/dashboard/stats', {
+          params: { currency: this.selectedCurrency }
+        });
         if (res.data.success) {
           this.stats = { ...this.stats, ...res.data.data };
         }
@@ -242,6 +258,10 @@ export default {
 /* Page Header */
 .page-header {
   margin-bottom: 2rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .page-header h1 {
@@ -255,6 +275,31 @@ export default {
   font-size: 0.95rem;
   color: #64748b;
   margin: 0;
+}
+
+.currency-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 130px;
+}
+
+.currency-selector label {
+  font-size: 0.7rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.currency-selector select {
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: #fff;
 }
 
 /* Stats Grid */
@@ -463,6 +508,11 @@ export default {
 }
 
 @media (max-width: 640px) {
+  .page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .stats-grid {
     grid-template-columns: 1fr;
     gap: 1rem;

@@ -7,10 +7,6 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::get('/{any}', function () {
-    return view('welcome'); // This will load the Vue.js app
-})->where('any', '.*');
-
 Route::get('/reset-password', [AuthController::class, 'showResetPasswordForm'])->name('password.reset');
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 
@@ -27,3 +23,14 @@ Route::get('/payment/error', function () {
     $message = request('message', 'An error occurred processing your payment');
     return view('payment.error', compact('message'));
 })->name('payment.error');
+
+Route::get('/payment/failed', function () {
+    $reference = request('reference');
+    return view('payment.error', [
+        'message' => 'Payment failed' . ($reference ? " (reference: {$reference})" : ''),
+    ]);
+})->name('payment.failed');
+
+Route::get('/{any}', function () {
+    return view('welcome'); // This will load the Vue.js app
+})->where('any', '.*');
