@@ -1731,14 +1731,14 @@ export default {
 
             history.pushState = function(data, title, url) {
                 originalPushState.apply(history, arguments);
-                if (url && url.includes('eu-test.oppwa.com/connectors/asyncresponse')) {
+                if (url && url.includes('/connectors/asyncresponse')) {
                     handleEftPayCallback(url);
                 }
             };
 
             history.replaceState = function(data, title, url) {
                 originalReplaceState.apply(history, arguments);
-                if (url && url.includes('eu-test.oppwa.com/connectors/asyncresponse')) {
+                if (url && url.includes('/connectors/asyncresponse')) {
                     handleEftPayCallback(url);
                 }
             };
@@ -1749,7 +1749,7 @@ export default {
                 const currentUrl = window.location.href;
                 if (currentUrl !== lastUrl) {
                     lastUrl = currentUrl;
-                    if (currentUrl.includes('eu-test.oppwa.com/connectors/asyncresponse')) {
+                    if (currentUrl.includes('/connectors/asyncresponse')) {
                         clearInterval(checkForUrlChange);
                         handleEftPayCallback(currentUrl);
                     }

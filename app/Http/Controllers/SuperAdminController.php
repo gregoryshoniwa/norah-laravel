@@ -307,23 +307,26 @@ class SuperAdminController extends Controller
     public function getCompanies(Request $request)
     {
         $this->requireSuper();
+        $currency = $request->input('currency', 'USD');
 
         $companies = User::where('role', 'ADMIN')
             ->select('company_name', DB::raw('COUNT(*) as admin_count'), DB::raw('MIN(created_at) as created_at'))
             ->groupBy('company_name')
             ->get()
-            ->map(function ($company) {
+            ->map(function ($company) use ($currency) {
                 $merchantCount = Merchant::whereHas('user', function ($q) use ($company) {
                     $q->where('company_name', $company->company_name);
                 })->count();
 
                 $transactionCount = Transaction::where('type', 'PAYMENT')
+                    ->where('currency', $currency)
                     ->whereHas('user', function ($q) use ($company) {
                         $q->where('company_name', $company->company_name);
                     })->count();
 
                 $volume = Transaction::where('type', 'PAYMENT')
                     ->where('status', 'COMPLETED')
+                    ->where('currency', $currency)
                     ->whereHas('user', function ($q) use ($company) {
                         $q->where('company_name', $company->company_name);
                     })->sum('numeric_amount');
@@ -340,6 +343,7 @@ class SuperAdminController extends Controller
 
         return response()->json([
             'success' => true,
+            'currency' => $currency,
             'data' => $companies,
         ]);
     }

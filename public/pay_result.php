@@ -402,6 +402,38 @@ if ($isDirectAccess) {
                                 </p>
                             </div>
                         </div>
+
+                        <script>
+                            // Persist failed ZimSwitch callbacks in Laravel so they appear in
+                            // transactions/recent transactions/audit trail.
+                            (function () {
+                                try {
+                                    const callback = new URL(window.location.href);
+                                    const resultCode = <?php echo json_encode($resultData['result']['code'] ?? null); ?>;
+                                    const extendedDescription = <?php echo json_encode($resultData['result']['extendedDescription'] ?? null); ?>;
+
+                                    if (resultCode) {
+                                        callback.searchParams.set('status', resultCode);
+                                    }
+                                    if (extendedDescription) {
+                                        callback.searchParams.set('resultDetails.ExtendedDescription', extendedDescription);
+                                    }
+
+                                    fetch('/api/v1/zimswitch/handle-eftpay-callback', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            callbackUrl: callback.toString(),
+                                            trace: null
+                                        })
+                                    }).catch(function (e) {
+                                        console.warn('Failed to notify backend about failed ZimSwitch callback', e);
+                                    });
+                                } catch (e) {
+                                    console.warn('Failed to build callback URL for backend notification', e);
+                                }
+                            })();
+                        </script>
                     <?php endif; ?>
 
                 <?php else: ?>

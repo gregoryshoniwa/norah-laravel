@@ -1856,9 +1856,6 @@ class TransactionController extends Controller
         }
 
         try {
-            // Use the checkout ID to get the payment status
-            $paymentStatus = $this->zimswitchService->getPaymentStatus($checkoutId);
-
             // Find the exact pending ZIMSWITCH confirmation transaction.
             $transaction = $this->findZimswitchConfirmTransaction(
                 $request->query('trace'),
@@ -1871,6 +1868,9 @@ class TransactionController extends Controller
                     'message' => 'Transaction not found.'
                 ]);
             }
+
+            // Use the checkout ID to get the payment status and attach trace for auditable linkage.
+            $paymentStatus = $this->zimswitchService->getPaymentStatus($checkoutId, $transaction->trace);
 
             // Update transaction with the payment status
             if ($paymentStatus['success']) {
@@ -1927,9 +1927,17 @@ class TransactionController extends Controller
 
             $resourcePath = $request->input('resourcePath');
             $trace = $request->input('trace');
+            $existingTransaction = Transaction::where('trace', $trace)
+                                    ->where('payment_method', 'ZIMSWITCH')
+                                    ->whereIn('type', ['CONFIRM'])
+                                    ->first();
 
             // Use the Zimswitch service to check payment status
-            $paymentStatus = $this->zimswitchService->checkPaymentStatus($resourcePath);
+            $paymentStatus = $this->zimswitchService->checkPaymentStatus(
+                $resourcePath,
+                $trace,
+                $existingTransaction->reference ?? null
+            );
 
             if ($paymentStatus['success']) {
                 // Find the transaction by trace (ensure it's a ZIMSWITCH CONFIRM transaction)
@@ -2163,7 +2171,7 @@ class TransactionController extends Controller
         try {
             $request->validate([
                 'callbackUrl' => 'required|string|url',
-                'trace' => 'required|string'
+                'trace' => 'nullable|string'
             ]);
 
             $callbackUrl = $request->input('callbackUrl');
@@ -2172,6 +2180,20 @@ class TransactionController extends Controller
             // Parse the callback URL to extract payment information
             $urlParts = parse_url($callbackUrl);
             parse_str($urlParts['query'] ?? '', $queryParams);
+
+            $this->audit([
+                'trace' => $trace,
+                'reference' => $queryParams['id'] ?? null,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'CALLBACK',
+                'event' => 'ZIMSWITCH_EFTPAY_CALLBACK_RECEIVED',
+                'level' => 'INFO',
+                'provider' => 'ZIMSWITCH',
+                'request_payload' => [
+                    'callbackUrl' => $callbackUrl,
+                    'queryParams' => $queryParams,
+                ],
+            ]);
 
             Log::info('EFTPay callback URL received', [
                 'callbackUrl' => $callbackUrl,
@@ -2182,21 +2204,32 @@ class TransactionController extends Controller
             // Extract key payment information from URL parameters
             $status = $queryParams['status'] ?? null;
             $uuid = $queryParams['uuid'] ?? null;
+            $checkoutId = $queryParams['id'] ?? null;
+            $resourcePath = $queryParams['resourcePath'] ?? null;
             $resultDescription = isset($queryParams['resultDetails.ExtendedDescription'])
                 ? urldecode($queryParams['resultDetails.ExtendedDescription'])
                 : null;
+
+            $transaction = $this->findZimswitchConfirmTransaction($trace, $checkoutId, $resourcePath);
 
             // Determine if payment was successful using same pattern as working implementation
             $isSuccess = $status && preg_match("/^(000\.000\.|000\.100\.1|000\.[36])/", $status);
 
             if ($isSuccess) {
-                // Find the transaction
-                $transaction = Transaction::where('trace', $trace)
-                                        ->where('payment_method', 'ZIMSWITCH')
-                                        ->whereIn('type', ['CONFIRM'])
-                                        ->first();
-
                 if ($transaction) {
+                    $this->audit([
+                        'transaction_id' => $transaction->id,
+                        'user_id' => $transaction->user_id,
+                        'trace' => $trace,
+                        'reference' => $transaction->reference,
+                        'payment_method' => 'ZIMSWITCH',
+                        'stage' => 'CALLBACK',
+                        'event' => 'ZIMSWITCH_EFTPAY_CALLBACK_SUCCESS',
+                        'level' => 'INFO',
+                        'provider' => 'ZIMSWITCH',
+                        'response_payload' => $queryParams,
+                    ]);
+
                     // Prepare payment response data for finalization
                     $paymentResponseData = [
                         'status' => $status,
@@ -2239,6 +2272,17 @@ class TransactionController extends Controller
                         'finalized' => true
                     ]);
                 } else {
+                    $this->audit([
+                        'trace' => $trace,
+                        'reference' => $queryParams['id'] ?? null,
+                        'payment_method' => 'ZIMSWITCH',
+                        'stage' => 'CALLBACK',
+                        'event' => 'ZIMSWITCH_EFTPAY_CALLBACK_SUCCESS_TRANSACTION_NOT_FOUND',
+                        'level' => 'WARNING',
+                        'provider' => 'ZIMSWITCH',
+                        'response_payload' => $queryParams,
+                    ]);
+
                     Log::warning('EFTPay payment successful but transaction not found', [
                         'trace' => $trace,
                         'status' => $status,
@@ -2258,12 +2302,20 @@ class TransactionController extends Controller
                 }
             } else {
                 // Payment failed - update transaction using proper failure handling
-                $transaction = Transaction::where('trace', $trace)
-                                        ->where('payment_method', 'ZIMSWITCH')
-                                        ->whereIn('type', ['CONFIRM'])
-                                        ->first();
-
                 if ($transaction) {
+                    $this->audit([
+                        'transaction_id' => $transaction->id,
+                        'user_id' => $transaction->user_id,
+                        'trace' => $trace,
+                        'reference' => $transaction->reference,
+                        'payment_method' => 'ZIMSWITCH',
+                        'stage' => 'CALLBACK',
+                        'event' => 'ZIMSWITCH_EFTPAY_CALLBACK_FAILED',
+                        'level' => 'WARNING',
+                        'provider' => 'ZIMSWITCH',
+                        'response_payload' => $queryParams,
+                    ]);
+
                     Log::warning('EFTPay payment failed, updating transaction', [
                         'trace' => $trace,
                         'transaction_id' => $transaction->id,
@@ -2294,6 +2346,17 @@ class TransactionController extends Controller
                         'transaction' => $responseData['transaction'] ?? null
                     ]);
                 } else {
+                    $this->audit([
+                        'trace' => $trace,
+                        'reference' => $queryParams['id'] ?? null,
+                        'payment_method' => 'ZIMSWITCH',
+                        'stage' => 'CALLBACK',
+                        'event' => 'ZIMSWITCH_EFTPAY_CALLBACK_FAILED_TRANSACTION_NOT_FOUND',
+                        'level' => 'WARNING',
+                        'provider' => 'ZIMSWITCH',
+                        'response_payload' => $queryParams,
+                    ]);
+
                     Log::warning('EFTPay payment failed but transaction not found', [
                         'trace' => $trace,
                         'status' => $status,
@@ -2315,6 +2378,15 @@ class TransactionController extends Controller
 
         } catch (\Exception $e) {
             Log::error('EFTPay callback handling error: ' . $e->getMessage());
+            $this->audit([
+                'trace' => $request->input('trace'),
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'CALLBACK',
+                'event' => 'ZIMSWITCH_EFTPAY_CALLBACK_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'ZIMSWITCH',
+                'response_payload' => ['message' => $e->getMessage()],
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to process payment callback',
@@ -2332,6 +2404,22 @@ class TransactionController extends Controller
         try {
             $paymentData = json_decode($request->input('payment_data'), true);
             $resourcePath = $request->input('resource_path');
+            $trace = $request->input('trace');
+            $paymentReference = is_array($paymentData) ? ($paymentData['id'] ?? null) : null;
+
+            $this->audit([
+                'trace' => $trace,
+                'reference' => $paymentReference,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'CALLBACK',
+                'event' => 'ZIMSWITCH_FINALIZE_REQUEST_RECEIVED',
+                'level' => 'INFO',
+                'provider' => 'ZIMSWITCH',
+                'request_payload' => [
+                    'resource_path' => $resourcePath,
+                    'payment_data' => $paymentData,
+                ],
+            ]);
 
             if (!$paymentData || !$resourcePath) {
                 return redirect('/payment/error?message=Invalid payment data');
@@ -2361,6 +2449,19 @@ class TransactionController extends Controller
                     'paymentData' => $paymentData,
                     'resourcePath' => $resourcePath
                 ]);
+                $this->audit([
+                    'trace' => $trace,
+                    'reference' => $transactionId,
+                    'payment_method' => 'ZIMSWITCH',
+                    'stage' => 'CALLBACK',
+                    'event' => 'ZIMSWITCH_FINALIZE_TRANSACTION_NOT_FOUND',
+                    'level' => 'WARNING',
+                    'provider' => 'ZIMSWITCH',
+                    'response_payload' => [
+                        'paymentData' => $paymentData,
+                        'resourcePath' => $resourcePath,
+                    ],
+                ]);
 
                 // Do not create orphan payment transactions without owner metadata.
                 return redirect('/payment/error?message=Matching transaction not found for this payment');
@@ -2385,6 +2486,18 @@ class TransactionController extends Controller
                 'currency' => $currency,
                 'resultCode' => $resultCode
             ]);
+            $this->audit([
+                'transaction_id' => $transaction->id,
+                'user_id' => $transaction->user_id,
+                'trace' => $transaction->trace,
+                'reference' => $transaction->reference,
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'CALLBACK',
+                'event' => 'ZIMSWITCH_FINALIZE_PROCESSING',
+                'level' => 'INFO',
+                'provider' => 'ZIMSWITCH',
+                'response_payload' => $paymentData,
+            ]);
 
             // Use the same finalization process as other payment methods
             $finalizationResponse = $this->finalizeSuccessfulTransaction($transaction, $paymentResponseData);
@@ -2396,6 +2509,15 @@ class TransactionController extends Controller
 
         } catch (\Exception $e) {
             Log::error('ZimSwitch finalization error: ' . $e->getMessage());
+            $this->audit([
+                'trace' => $request->input('trace'),
+                'payment_method' => 'ZIMSWITCH',
+                'stage' => 'CALLBACK',
+                'event' => 'ZIMSWITCH_FINALIZE_EXCEPTION',
+                'level' => 'ERROR',
+                'provider' => 'ZIMSWITCH',
+                'response_payload' => ['message' => $e->getMessage()],
+            ]);
             return redirect('/payment/error?message=Error processing payment: ' . $e->getMessage());
         }
     }

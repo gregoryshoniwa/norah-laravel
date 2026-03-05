@@ -34,16 +34,8 @@ class ZimswitchPaymentService
     {
         $trace = $data['trace'] ?? null;
         try {
-            // Load auth configuration like the working implementation
-            $authJsonPath = base_path('zimswitch/auth.json');
-            if (!file_exists($authJsonPath)) {
-                throw new \Exception('Authentication configuration file not found');
-            }
-
-            $authConfig = json_decode(file_get_contents($authJsonPath), true);
-            if (!$authConfig) {
-                throw new \Exception('Invalid authentication configuration');
-            }
+            // Prefer env/services config (production-safe), with auth.json fallback.
+            $authConfig = $this->resolveAuthConfig();
 
             // Debug: Log the incoming data to understand what's available
             Log::info('Zimswitch prepareCheckout data received', [
@@ -71,7 +63,19 @@ class ZimswitchPaymentService
             $amount = number_format((float)$amount, 2, '.', '');
 
             $currency = $data['currency'] ?? 'USD';
-            $paymode = config('app.env') === 'production' ? 'LIVE' : 'TEST_EXTERNAL';
+
+            // Determine mode from gateway URL first (prod endpoint must never receive testMode),
+            // then allow explicit override from payload, then fallback to app env.
+            $baseUrl = (string) ($authConfig['baseUrl'] ?? '');
+            $isProdGateway = str_contains($baseUrl, 'eu-prod.oppwa.com');
+            $requestedMode = strtoupper((string) ($data['paymode'] ?? ''));
+            if ($isProdGateway) {
+                $paymode = 'LIVE';
+            } elseif (in_array($requestedMode, ['LIVE', 'TEST_EXTERNAL', 'TEST_INTERNAL'], true)) {
+                $paymode = $requestedMode;
+            } else {
+                $paymode = config('app.env') === 'production' ? 'LIVE' : 'TEST_EXTERNAL';
+            }
 
             // Debug: Log the final amount being used
             Log::info('Zimswitch amount calculation', [
@@ -190,11 +194,12 @@ class ZimswitchPaymentService
      * @param string $resourcePath
      * @return array
      */
-    public function checkPaymentStatus($resourcePath)
+    public function checkPaymentStatus($resourcePath, ?string $trace = null, ?string $reference = null)
     {
         try {
             $this->audit([
-                'trace' => null,
+                'trace' => $trace,
+                'reference' => $reference,
                 'payment_method' => 'ZIMSWITCH',
                 'stage' => 'PROVIDER_REQUEST',
                 'event' => 'ZIMSWITCH_RESOURCE_STATUS_REQUEST',
@@ -202,16 +207,7 @@ class ZimswitchPaymentService
                 'provider' => 'ZIMSWITCH',
                 'request_payload' => ['resourcePath' => $resourcePath],
             ]);
-            // Load auth configuration
-            $authJsonPath = base_path('zimswitch/auth.json');
-            if (!file_exists($authJsonPath)) {
-                throw new \Exception('Authentication configuration file not found');
-            }
-
-            $authConfig = json_decode(file_get_contents($authJsonPath), true);
-            if (!$authConfig) {
-                throw new \Exception('Invalid authentication configuration');
-            }
+            $authConfig = $this->resolveAuthConfig();
 
             // Build URL for payment status check exactly like working implementation
             $url = $authConfig['baseUrl'] . $resourcePath;
@@ -258,7 +254,8 @@ class ZimswitchPaymentService
                 'fullResponse' => $decodedData
             ]);
             $this->audit([
-                'trace' => null,
+                'trace' => $trace,
+                'reference' => $reference,
                 'payment_method' => 'ZIMSWITCH',
                 'stage' => 'PROVIDER_RESPONSE',
                 'event' => 'ZIMSWITCH_RESOURCE_STATUS_RESPONSE',
@@ -287,7 +284,8 @@ class ZimswitchPaymentService
         } catch (\Exception $e) {
             Log::error('Zimswitch payment status check error: ' . $e->getMessage());
             $this->audit([
-                'trace' => null,
+                'trace' => $trace,
+                'reference' => $reference,
                 'payment_method' => 'ZIMSWITCH',
                 'stage' => 'PROVIDER_EXCEPTION',
                 'event' => 'ZIMSWITCH_RESOURCE_STATUS_EXCEPTION',
@@ -309,11 +307,11 @@ class ZimswitchPaymentService
      * @param string $checkoutId
      * @return array
      */
-    public function getPaymentStatus($checkoutId)
+    public function getPaymentStatus($checkoutId, ?string $trace = null)
     {
         try {
             $this->audit([
-                'trace' => null,
+                'trace' => $trace,
                 'reference' => $checkoutId,
                 'payment_method' => 'ZIMSWITCH',
                 'stage' => 'PROVIDER_REQUEST',
@@ -332,7 +330,7 @@ class ZimswitchPaymentService
 
             if ($response->successful()) {
                 $this->audit([
-                    'trace' => null,
+                    'trace' => $trace,
                     'reference' => $checkoutId,
                     'payment_method' => 'ZIMSWITCH',
                     'stage' => 'PROVIDER_RESPONSE',
@@ -365,7 +363,7 @@ class ZimswitchPaymentService
         } catch (\Exception $e) {
             Log::error('Zimswitch payment status error: ' . $e->getMessage());
             $this->audit([
-                'trace' => null,
+                'trace' => $trace,
                 'reference' => $checkoutId,
                 'payment_method' => 'ZIMSWITCH',
                 'stage' => 'PROVIDER_EXCEPTION',
@@ -385,5 +383,45 @@ class ZimswitchPaymentService
     private function audit(array $data): void
     {
         $this->transactionAuditService->record($data);
+    }
+
+    /**
+     * Resolve ZimSwitch auth config from env/services first.
+     * Falls back to zimswitch/auth.json for backward compatibility.
+     */
+    private function resolveAuthConfig(): array
+    {
+        $baseUrl = rtrim((string) config('services.zimswitch.url'), '/');
+        $entityId = (string) config('services.zimswitch.entity_id');
+        $authToken = (string) config('services.zimswitch.auth_token');
+        $payType = (string) (config('services.zimswitch.pay_type') ?: env('ZIMSWITCH_PAY_TYPE', 'DB'));
+
+        if (!empty($baseUrl) && !empty($entityId) && !empty($authToken)) {
+            $parsed = parse_url($baseUrl);
+            $host = $parsed['host'] ?? '';
+            $path = $parsed['path'] ?? '';
+            $checkoutUrl = ltrim($host . $path . '/v1/paymentWidgets.js?checkoutId=', '/');
+
+            return [
+                'entityId' => $entityId,
+                'authorizationBearer' => 'Authorization:Bearer ' . $authToken,
+                'oppwaUrl' => $baseUrl . '/v1/checkouts',
+                'payType' => $payType ?: 'DB',
+                'baseUrl' => $baseUrl,
+                'checkoutUrl' => $checkoutUrl,
+            ];
+        }
+
+        $authJsonPath = base_path('zimswitch/auth.json');
+        if (!file_exists($authJsonPath)) {
+            throw new \Exception('Zimswitch auth config not found. Set ZIMSWITCH_* env values.');
+        }
+
+        $authConfig = json_decode(file_get_contents($authJsonPath), true);
+        if (!$authConfig) {
+            throw new \Exception('Invalid zimswitch/auth.json configuration.');
+        }
+
+        return $authConfig;
     }
 }

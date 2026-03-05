@@ -58,6 +58,7 @@ return [
         'entity_id' => env('ZIMSWITCH_ENTITY_ID'),
         'auth_token' => env('ZIMSWITCH_AUTH_TOKEN'),
         'payment_brand' => env('ZIMSWITCH_PAYMENT_BRAND'),
+        'pay_type' => env('ZIMSWITCH_PAY_TYPE', 'DB'),
     ],
 
     'iveri' => [

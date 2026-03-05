@@ -212,6 +212,7 @@ export default {
 
     handleCurrencyChange() {
       this.loadStats();
+      this.loadCompanies();
     },
 
     async loadStats() {
@@ -234,7 +235,9 @@ export default {
     async loadCompanies() {
       this.loadingCompanies = true;
       try {
-        const res = await axios.get('/api/v1/super/companies');
+        const res = await axios.get('/api/v1/super/companies', {
+          params: { currency: this.selectedCurrency }
+        });
         if (res.data.success) {
           this.companies = res.data.data || [];
         }
