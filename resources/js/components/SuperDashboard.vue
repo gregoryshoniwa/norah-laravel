@@ -6,7 +6,7 @@
         <span class="sidebar-badge">SUPER</span>
       </div>
       <nav class="sidebar-nav">
-        <router-link :to="{ name: 'super-dashboard' }" exact class="nav-item" active-class="active">
+        <router-link :to="{ name: 'super-dashboard' }" class="nav-item" exact-active-class="active">
           <i class="ri-dashboard-line"></i> Dashboard
         </router-link>
         <router-link :to="{ name: 'super-merchants' }" class="nav-item" active-class="active">

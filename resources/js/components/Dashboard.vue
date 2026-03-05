@@ -7,7 +7,7 @@
         <!-- <h3 class="sidebar-title">NORAH</h3> -->
       </div>
       <nav class="sidebar-nav">
-        <router-link :to="{ name: 'dashboard' }" exact class="nav-item" active-class="active">
+        <router-link :to="{ name: 'dashboard' }" class="nav-item" exact-active-class="active">
           <i class="ri-dashboard-line"></i>
           Dashboard
         </router-link>
