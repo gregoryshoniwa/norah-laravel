@@ -53,6 +53,11 @@ class SuperAdminController extends Controller
 
         $superUsers = User::where('role', 'SUPER')->count();
 
+        // Total profit = system charges + merchant charges (our revenue from charges)
+        $systemCharges = Transaction::where('type', 'SYSTEM_CHARGE')->where('status', 'COMPLETED')->sum('amount');
+        $merchantCharges = Transaction::where('type', 'MERCHANT_CHARGE')->where('status', 'COMPLETED')->sum('amount');
+        $totalProfit = $systemCharges + $merchantCharges;
+
         $recentTransactions = Transaction::whereIn('type', ['PAYMENT'])
             ->with('user:id,email,company_name')
             ->orderByDesc('created_at')
@@ -73,6 +78,7 @@ class SuperAdminController extends Controller
                 'activeMerchants' => $activeMerchants,
                 'totalTransactions' => $totalTransactions,
                 'totalVolume' => $totalVolume,
+                'totalProfit' => $totalProfit,
                 'completed' => $completedCount,
                 'pending' => $pendingCount,
                 'failed' => $failedCount,

@@ -28,6 +28,26 @@
       </div>
     </div>
 
+    <!-- Stats Cards -->
+    <div class="stats-cards" v-if="stats">
+      <div class="stat-card">
+        <div class="stat-info">
+          <h3>Volume (to Customer)</h3>
+          <p class="stat-value">{{ formatAmount(stats.totalVolume, 'USD') }}</p>
+          <span class="stat-hint">Amount to send to customer</span>
+        </div>
+        <div class="stat-icon"><i class="ri-money-dollar-circle-line"></i></div>
+      </div>
+      <div class="stat-card accent">
+        <div class="stat-info">
+          <h3>Total Profit (Charges)</h3>
+          <p class="stat-value">{{ formatAmount(stats.totalProfit, 'USD') }}</p>
+          <span class="stat-hint">Our revenue from charges</span>
+        </div>
+        <div class="stat-icon"><i class="ri-line-chart-line"></i></div>
+      </div>
+    </div>
+
     <div class="content-card">
       <div class="table-toolbar">
         <div class="search-box">
@@ -47,7 +67,8 @@
             <tr>
               <th>ID</th>
               <th>Date</th>
-              <th>Amount</th>
+              <th>To Customer</th>
+              <th>Our Charge</th>
               <th>Method</th>
               <th>Company</th>
               <th>Merchant</th>
@@ -61,6 +82,7 @@
               <td class="txn-id">#{{ txn.id }}</td>
               <td>{{ formatDate(txn.created_at) }}</td>
               <td class="txn-amount">{{ formatAmount(txn.amount, txn.currency) }}</td>
+              <td class="txn-amount">{{ formatAmount(txn.charge ?? 0, txn.currency) }}</td>
               <td>
                 <span class="method-badge" :class="methodClass(txn.payment_method)">
                   {{ formatMethod(txn.payment_method) }}
@@ -86,7 +108,7 @@
           </tbody>
           <tbody v-else-if="loading">
             <tr>
-              <td colspan="9" class="text-center">
+              <td colspan="10" class="text-center">
                 <div class="loading-spinner">
                   <i class="ri-loader-4-line spin"></i> Loading...
                 </div>
@@ -95,7 +117,7 @@
           </tbody>
           <tbody v-else>
             <tr>
-              <td colspan="9" class="empty-state">
+              <td colspan="10" class="empty-state">
                 <i class="ri-inbox-line empty-icon"></i>
                 <p>No transactions found</p>
               </td>
@@ -153,8 +175,12 @@
               <span>{{ formatDate(selectedTransaction.created_at) }}</span>
             </div>
             <div class="detail-item">
-              <label>Amount</label>
+              <label>To Customer</label>
               <span>{{ formatAmount(selectedTransaction.amount, selectedTransaction.currency) }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Our Charge</label>
+              <span>{{ formatAmount(selectedTransaction.charge ?? 0, selectedTransaction.currency) }}</span>
             </div>
             <div class="detail-item">
               <label>Currency</label>
@@ -422,7 +448,11 @@ export default {
         entries: [],
         activeTab: 'timeline'
       },
-      expandedPayloads: {}
+      expandedPayloads: {},
+      stats: {
+        totalVolume: 0,
+        totalProfit: 0
+      }
     };
   },
   computed: {
@@ -443,6 +473,7 @@ export default {
   },
   mounted() {
     this.loadTransactions();
+    this.loadStats();
   },
   methods: {
     formatAmount(amount, currency = 'USD') {
@@ -498,6 +529,19 @@ export default {
     applyFilters() {
       this.currentPage = 1;
       this.loadTransactions();
+    },
+    async loadStats() {
+      try {
+        const res = await axios.get('/api/v1/super/dashboard/stats');
+        if (res.data.success) {
+          this.stats = {
+            totalVolume: res.data.data.totalVolume ?? 0,
+            totalProfit: res.data.data.totalProfit ?? 0
+          };
+        }
+      } catch (err) {
+        console.error('Error loading stats:', err);
+      }
     },
     async loadTransactions() {
       this.loading = true;
@@ -715,6 +759,63 @@ export default {
 
 .btn-apply:hover {
   box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stats-cards .stat-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.stats-cards .stat-card.accent {
+  border-left: 4px solid #f59e0b;
+}
+
+.stats-cards .stat-info h3 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 0.25rem 0;
+}
+
+.stats-cards .stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.stats-cards .stat-hint {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.stats-cards .stat-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
 }
 
 .content-card {

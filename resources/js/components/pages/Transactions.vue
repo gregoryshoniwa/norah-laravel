@@ -33,15 +33,23 @@
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-info">
-          <h3>Total Volume</h3>
+          <h3>Volume (to Customer)</h3>
           <p class="amount">{{ formatAmount(stats.totalVolume) }}</p>
-          <span class="trend positive">
-            <i class="ri-arrow-up-line"></i>
-            12.5%
-          </span>
+          <span class="stat-hint">Amount to send to customer</span>
         </div>
         <div class="stat-icon">
           <i class="ri-money-dollar-circle-line"></i>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-info">
+          <h3>Total Profit (Charges)</h3>
+          <p class="amount">{{ formatAmount(stats.totalProfit) }}</p>
+          <span class="stat-hint">Our revenue from charges</span>
+        </div>
+        <div class="stat-icon">
+          <i class="ri-line-chart-line"></i>
         </div>
       </div>
 
@@ -114,7 +122,8 @@
             <tr>
               <th>Transaction ID</th>
               <th>Date</th>
-              <th>Amount</th>
+              <th>To Customer</th>
+              <th>Our Charge</th>
               <th>Method</th>
               <th>Type</th>
               <th>Status</th>
@@ -126,6 +135,7 @@
               <td class="txn-id">#{{ transaction.id }}</td>
               <td>{{ formatDate(transaction.created_at) }}</td>
               <td class="txn-amount">{{ formatAmount(transaction.amount) }}</td>
+              <td class="txn-amount">{{ formatAmount(transaction.charge || 0) }}</td>
               <td>
                 <span class="method-badge" :class="(transaction.payment_method || '').toLowerCase()">
                   {{ formatMethod(transaction.payment_method) }}
@@ -152,7 +162,7 @@
           </tbody>
           <tbody v-else-if="loading">
             <tr>
-              <td colspan="7" class="text-center">
+              <td colspan="8" class="text-center">
                 <div class="loading-spinner">
                   <i class="ri-loader-4-line spin"></i>
                   Loading...
@@ -162,7 +172,7 @@
           </tbody>
           <tbody v-else>
             <tr>
-              <td colspan="7" class="text-center empty-state">
+              <td colspan="8" class="text-center empty-state">
                 <i class="ri-inbox-line empty-icon"></i>
                 <p>No transactions found</p>
               </td>
@@ -221,8 +231,12 @@
               <span>{{ formatDate(selectedTransaction.created_at) }}</span>
             </div>
             <div class="detail-item">
-              <label>Amount</label>
+              <label>To Customer</label>
               <span>{{ formatAmount(selectedTransaction.amount) }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Our Charge</label>
+              <span>{{ formatAmount(selectedTransaction.charge || 0) }}</span>
             </div>
             <div class="detail-item">
               <label>Status</label>
@@ -464,6 +478,7 @@ export default {
       },
       stats: {
         totalVolume: 0,
+        totalProfit: 0,
         completed: 0,
         pending: 0,
         failed: 0
@@ -609,6 +624,7 @@ export default {
 
         if (response.data.success) {
           this.stats.totalVolume = response.data.data.totalVolume;
+          this.stats.totalProfit = response.data.data.totalProfit ?? (response.data.data.systemCharges + response.data.data.merchantCharges);
 
           const statusResponse = await axios.get('/api/v1/transactions/all', {
             params: { count_by_status: true, currency: this.currency }
@@ -936,6 +952,13 @@ export default {
 .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+}
+
+.stat-hint {
+  font-size: 0.7rem;
+  color: #999;
+  display: block;
+  margin-top: 0.25rem;
 }
 
 .stat-info h3 {

@@ -35,8 +35,9 @@
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-info">
-          <h3>Total Volume</h3>
+          <h3>Volume (to Customer)</h3>
           <p class="amount">{{ formatAmount(stats.totalVolume) }}</p>
+          <span class="stat-hint">Amount to send to customer</span>
         </div>
         <div class="stat-icon">
           <i class="ri-money-dollar-circle-line"></i>
@@ -55,21 +56,12 @@
 
       <div class="stat-card">
         <div class="stat-info">
-          <h3>System Charges</h3>
-          <p class="amount">{{ formatAmount(stats.systemCharges) }}</p>
+          <h3>Total Profit (Charges)</h3>
+          <p class="amount accent">{{ formatAmount(stats.totalProfit ?? (stats.systemCharges + stats.merchantCharges)) }}</p>
+          <span class="stat-hint">Our revenue from charges</span>
         </div>
         <div class="stat-icon">
           <i class="ri-line-chart-line"></i>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-info">
-          <h3>Profit / Charges</h3>
-          <p class="amount">{{ formatAmount(stats.merchantCharges) }}</p>
-        </div>
-        <div class="stat-icon">
-          <i class="ri-user-line"></i>
         </div>
       </div>
     </div>
@@ -85,9 +77,9 @@
           <thead>
             <tr>
               <th>Tran ID</th>
-              <th>Total</th>
-              <th>Amount</th>
-              <th>Charge</th>
+              <th>Total (Customer Paid)</th>
+              <th>To Customer</th>
+              <th>Our Charge</th>
               <th>Type</th>
               <th>Status</th>
               <th>Date</th>
@@ -96,9 +88,9 @@
           <tbody v-if="!loading">
             <tr v-for="transaction in transactions" :key="transaction.id">
               <td>#{{ transaction.id }}</td>
-              <td>{{ formatAmount(Number(transaction.amount) + Number(transaction.charge)) }}</td>
+              <td>{{ formatAmount(Number(transaction.amount) + Number(transaction.charge || 0)) }}</td>
               <td>{{ formatAmount(transaction.amount) }}</td>
-              <td>{{ formatAmount(transaction.charge) }}</td>
+              <td>{{ formatAmount(transaction.charge || 0) }}</td>
               <td>{{ transaction.type }}</td>
               <td>
                 <span :class="['status',
@@ -152,6 +144,7 @@ export default {
         userInitials: '',
       stats: {
         totalVolume: 0,
+        totalProfit: 0,
         totalTransactions: 0,
         systemCharges: 0,
         merchantCharges: 0
@@ -264,7 +257,7 @@ export default {
 /* Stats Grid Styles */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
@@ -293,6 +286,13 @@ export default {
   margin: 0 0 0.5rem 0;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.stat-hint {
+  font-size: 0.7rem;
+  color: #999;
+  display: block;
+  margin-top: 0.25rem;
 }
 
 .amount {

@@ -71,7 +71,8 @@
             <tr>
               <th>ID</th>
               <th>Date</th>
-              <th>Amount</th>
+              <th>To Customer</th>
+              <th>Our Charge</th>
               <th>Method</th>
               <th>Status</th>
               <th>User</th>
@@ -82,6 +83,7 @@
               <td>#{{ txn.id }}</td>
               <td>{{ formatDate(txn.created_at) }}</td>
               <td>{{ formatUsd(getTransactionAmount(txn)) }}</td>
+              <td>{{ formatUsd(txn.charge ?? 0) }}</td>
               <td>{{ txn.payment_method || '—' }}</td>
               <td>
                 <span :class="['status-badge', statusClass(txn.status)]">{{ txn.status }}</span>
@@ -89,12 +91,12 @@
               <td>{{ getUserDisplay(txn) }}</td>
             </tr>
             <tr v-if="recentTransactions.length === 0">
-              <td colspan="6" class="empty-cell">No recent transactions</td>
+              <td colspan="7" class="empty-cell">No recent transactions</td>
             </tr>
           </tbody>
           <tbody v-else>
             <tr>
-              <td colspan="6" class="loading-cell">
+              <td colspan="7" class="loading-cell">
                 <i class="ri-loader-4-line spin"></i> Loading transactions...
               </td>
             </tr>
@@ -119,6 +121,7 @@ export default {
         activeMerchants: 0,
         totalTransactions: 0,
         totalVolume: 0,
+        totalProfit: 0,
         completed: 0,
         pending: 0,
         failed: 0,
@@ -138,7 +141,8 @@ export default {
         { key: 'companies', label: 'Companies', displayValue: s.companies, icon: 'ri-building-line', iconClass: 'default' },
         { key: 'merchants', label: 'Total Merchants', displayValue: `${s.totalMerchants} / ${s.activeMerchants} active`, icon: 'ri-store-2-line', iconClass: 'default' },
         { key: 'transactions', label: 'Total Transactions', displayValue: s.totalTransactions, icon: 'ri-exchange-dollar-line', iconClass: 'default' },
-        { key: 'volume', label: 'Total Volume', displayValue: this.formatUsd(s.totalVolume), icon: 'ri-money-dollar-circle-line', iconClass: 'accent' },
+        { key: 'volume', label: 'Volume (to Customer)', displayValue: this.formatUsd(s.totalVolume), icon: 'ri-money-dollar-circle-line', iconClass: 'default' },
+        { key: 'profit', label: 'Total Profit (Charges)', displayValue: this.formatUsd(s.totalProfit), icon: 'ri-line-chart-line', iconClass: 'accent' },
         { key: 'completed', label: 'Completed', displayValue: s.completed, icon: 'ri-checkbox-circle-line', iconClass: 'success' },
         { key: 'pending', label: 'Pending', displayValue: s.pending, icon: 'ri-time-line', iconClass: 'pending' },
         { key: 'failed', label: 'Failed', displayValue: s.failed, icon: 'ri-close-circle-line', iconClass: 'failed' },

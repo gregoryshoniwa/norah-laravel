@@ -1223,20 +1223,24 @@ class TransactionController extends Controller
                 ->where('status', 'COMPLETED')
                 ->count();
 
-            // Get system charges total
+            // Get system charges total (our profit)
             $systemCharges = Transaction::where('type', 'SYSTEM_CHARGE')
                 ->where('status', 'COMPLETED')
                 ->sum('amount');
 
-            // Get merchant charges total
+            // Get merchant charges total (our profit)
             $merchantCharges = Transaction::where('type', 'MERCHANT_CHARGE')
                 ->where('status', 'COMPLETED')
                 ->sum('amount');
+
+            // Total profit = sum of all charges collected
+            $totalProfit = $systemCharges + $merchantCharges;
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'totalVolume' => $totalVolume,
+                    'totalProfit' => $totalProfit,
                     'totalTransactions' => $totalTransactions,
                     'systemCharges' => $systemCharges,
                     'merchantCharges' => $merchantCharges
