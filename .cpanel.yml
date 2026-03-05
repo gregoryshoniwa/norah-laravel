@@ -1,4 +1,5 @@
 ---
 deployment:
   tasks:
-    - /bin/cp -R app bootstrap config database public resources routes storage artisan composer.json composer.lock package.json yarn.lock vite.config.js /home/npgcozw/public_html/
+    - export DEPLOYPATH=/home/npgcozw/public_html/
+    - /bin/cp -R app bootstrap config database public resources routes storage artisan composer.json composer.lock package.json yarn.lock vite.config.js $DEPLOYPATH
