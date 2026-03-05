@@ -45,6 +45,7 @@ return [
         'url' => env('ECOCASH_URL'),
         'username' => env('ECOCASH_USERNAME'),
         'password' => env('ECOCASH_PASSWORD'),
+        'mock' => env('ECOCASH_MOCK', false),
     ],
 
     'omari' => [

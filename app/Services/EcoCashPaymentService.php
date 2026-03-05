@@ -12,6 +12,7 @@ class EcoCashPaymentService
     protected $url;
     protected $username;
     protected $password;
+    protected $mock;
     protected $transactionAuditService;
 
     public function __construct(TransactionAuditService $transactionAuditService)
@@ -19,6 +20,7 @@ class EcoCashPaymentService
         $this->url = config('services.ecocash.url');
         $this->username = config('services.ecocash.username');
         $this->password = config('services.ecocash.password');
+        $this->mock = config('services.ecocash.mock', false);
         $this->transactionAuditService = $transactionAuditService;
     }
 
@@ -130,11 +132,34 @@ class EcoCashPaymentService
             'request_payload' => $apiRequest,
         ]);
 
+        if ($this->mock) {
+            $this->audit([
+                'transaction_id' => null,
+                'user_id' => $user->id,
+                'trace' => $trace,
+                'reference' => $reference,
+                'payment_method' => 'ECOCASH',
+                'stage' => 'PROVIDER_RESPONSE',
+                'event' => 'ECOCASH_MOCK_RESPONSE',
+                'level' => 'INFO',
+                'provider' => 'ECOCASH',
+                'response_payload' => ['mock' => true, 'referenceCode' => $reference],
+            ]);
+            return [
+                'referenceCode' => $reference,
+                'clientCorrelator' => $reference,
+                'transactionOperationStatus' => 'Charged',
+                'resourceReference' => ['resourceURL' => $reference],
+            ];
+        }
+
         try {
-            $response = Http::withHeaders([
-                'Authorization' => "Basic {$auth}",
-                'Content-Type' => 'application/json',
-            ])->post($endpoint, $apiRequest);
+            $response = Http::timeout(30)
+                ->withOptions(['curl' => [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4]])
+                ->withHeaders([
+                    'Authorization' => "Basic {$auth}",
+                    'Content-Type' => 'application/json',
+                ])->post($endpoint, $apiRequest);
 
             $this->audit([
                 'transaction_id' => null,
@@ -173,16 +198,40 @@ class EcoCashPaymentService
                 'response_payload' => ['message' => $e->getMessage()],
             ]);
 
+            $message = $e->getMessage();
+            if (str_contains($message, 'Could not resolve host') || str_contains($message, 'cURL error 6')) {
+                throw new \Exception(
+                    'Unable to connect to EcoCash. The payment gateway may only be reachable from approved networks (e.g. Zimbabwe). For local development, set ECOCASH_MOCK=true in .env.'
+                );
+            }
             throw $e;
         }
     }
 
     public function inquirePaymentRequest(string $phoneNumber, string $clientCorrelator, ?string $trace = null)
     {
-        $auth = base64_encode("{$this->username}:{$this->password}");
         $endpoint = "{$this->url}/{$phoneNumber}/transactions/amount/{$clientCorrelator}";
         $auditTrace = $trace ?? $clientCorrelator;
 
+        if ($this->mock) {
+            $this->audit([
+                'trace' => $auditTrace,
+                'reference' => $clientCorrelator,
+                'payment_method' => 'ECOCASH',
+                'stage' => 'PROVIDER_RESPONSE',
+                'event' => 'ECOCASH_MOCK_INQUIRY_RESPONSE',
+                'level' => 'INFO',
+                'provider' => 'ECOCASH',
+                'response_payload' => ['mock' => true],
+            ]);
+            return [
+                'transactionOperationStatus' => 'COMPLETED',
+                'clientCorrelator' => $clientCorrelator,
+                'ecocashReference' => 'MOCK_' . $clientCorrelator,
+            ];
+        }
+
+        $auth = base64_encode("{$this->username}:{$this->password}");
         $this->audit([
             'trace' => $auditTrace,
             'reference' => $clientCorrelator,
@@ -199,9 +248,11 @@ class EcoCashPaymentService
         ]);
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => "Basic {$auth}",
-            ])->get($endpoint);
+            $response = Http::timeout(30)
+                ->withOptions(['curl' => [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4]])
+                ->withHeaders([
+                    'Authorization' => "Basic {$auth}",
+                ])->get($endpoint);
 
             $this->audit([
                 'trace' => $auditTrace,
@@ -238,6 +289,12 @@ class EcoCashPaymentService
                 'response_payload' => ['message' => $e->getMessage()],
             ]);
 
+            $message = $e->getMessage();
+            if (str_contains($message, 'Could not resolve host') || str_contains($message, 'cURL error 6')) {
+                throw new \Exception(
+                    'Unable to connect to EcoCash. The payment gateway may only be reachable from approved networks. For local development, set ECOCASH_MOCK=true in .env.'
+                );
+            }
             throw $e;
         }
     }

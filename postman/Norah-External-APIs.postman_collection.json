@@ -1,0 +1,589 @@
+{
+  "info": {
+    "_postman_id": "b4c4efe0-6c1e-43f8-a5d6-fb9230bce522",
+    "name": "Norah External APIs",
+    "description": "Collection generated from current Laravel payment service integrations. Credentials and endpoint settings are loaded from collection variables matching .env keys.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "InnBucks",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{INNBUCKS_KEY}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{INNBUCKS_USERNAME}}\",\n  \"password\": \"{{INNBUCKS_PASSWORD}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{INNBUCKS_URL}}/auth/third-party",
+              "host": [
+                "{{INNBUCKS_URL}}"
+              ],
+              "path": [
+                "auth",
+                "third-party"
+              ]
+            },
+            "description": "Matches InnBucksPaymentService::login"
+          }
+        },
+        {
+          "name": "Create Payment Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{INNBUCKS_KEY}}",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{INNBUCKS_ACCESS_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{PHONE_NUMBER}}\",\n  \"total\": {{AMOUNT}},\n  \"currency\": \"{{CURRENCY}}\",\n  \"reference\": \"{{REFERENCE}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{INNBUCKS_URL}}/api/code/generate",
+              "host": [
+                "{{INNBUCKS_URL}}"
+              ],
+              "path": [
+                "api",
+                "code",
+                "generate"
+              ]
+            },
+            "description": "Matches InnBucksPaymentService::createPaymentRequest (expects bearer token from Login)."
+          }
+        },
+        {
+          "name": "Inquire Payment Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{INNBUCKS_KEY}}",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{INNBUCKS_ACCESS_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"{{REFERENCE}}\",\n  \"code\": \"{{INNBUCKS_CODE}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{INNBUCKS_URL}}/api/code/inquiry",
+              "host": [
+                "{{INNBUCKS_URL}}"
+              ],
+              "path": [
+                "api",
+                "code",
+                "inquiry"
+              ]
+            },
+            "description": "Matches InnBucksPaymentService::inquirePaymentRequest."
+          }
+        }
+      ]
+    },
+    {
+      "name": "EcoCash",
+      "item": [
+        {
+          "name": "Create Payment Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{ECOCASH_USERNAME}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{ECOCASH_PASSWORD}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientCorrelator\": \"{{ECOCASH_CLIENT_CORRELATOR}}\",\n  \"notifyUrl\": \"{{NOTIFY_URL}}\",\n  \"referenceCode\": \"{{REFERENCE}}\",\n  \"tranType\": \"MER\",\n  \"endUserId\": \"{{ECOCASH_PHONE_NUMBER}}\",\n  \"remarks\": \"Norah Payments\",\n  \"transactionOperationStatus\": \"Charged\",\n  \"paymentAmount\": {\n    \"charginginformation\": {\n      \"amount\": {{AMOUNT}},\n      \"currency\": \"{{CURRENCY}}\",\n      \"description\": \"Norah Online Payment\"\n    },\n    \"chargeMetaData\": {\n      \"channel\": \"WEB\",\n      \"purchaseCategoryCode\": \"Online Payment\",\n      \"onBeHalfOf\": \"Norah pgw\"\n    }\n  },\n  \"merchantCode\": \"{{ECOCASH_MERCHANT_CODE}}\",\n  \"merchantPin\": \"{{ECOCASH_MERCHANT_PIN}}\",\n  \"merchantNumber\": \"{{ECOCASH_MERCHANT_NUMBER}}\",\n  \"currencyCode\": \"{{CURRENCY}}\",\n  \"countryCode\": \"ZW\",\n  \"terminalID\": \"NORAH1\",\n  \"location\": \"194 Baines Avenue, Harare, Zimbabwe\",\n  \"superMerchantName\": \"NOARH\",\n  \"merchantName\": \"Noarh Payment Gateway\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ECOCASH_URL}}/transactions/amount",
+              "host": [
+                "{{ECOCASH_URL}}"
+              ],
+              "path": [
+                "transactions",
+                "amount"
+              ]
+            },
+            "description": "Matches EcoCashPaymentService::createPaymentRequest."
+          }
+        },
+        {
+          "name": "Inquire Payment Request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{ECOCASH_USERNAME}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{ECOCASH_PASSWORD}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{ECOCASH_URL}}/{{ECOCASH_PHONE_NUMBER}}/transactions/amount/{{ECOCASH_CLIENT_CORRELATOR}}",
+              "host": [
+                "{{ECOCASH_URL}}"
+              ],
+              "path": [
+                "{{ECOCASH_PHONE_NUMBER}}",
+                "transactions",
+                "amount",
+                "{{ECOCASH_CLIENT_CORRELATOR}}"
+              ]
+            },
+            "description": "Matches EcoCashPaymentService::inquirePaymentRequest."
+          }
+        }
+      ]
+    },
+    {
+      "name": "OMARI",
+      "item": [
+        {
+          "name": "Auth Request (Send OTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Merchant-Key",
+                "value": "{{OMARI_MERCHANT_KEY}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"msisdn\": \"{{OMARI_MSISDN}}\",\n  \"reference\": \"{{OMARI_REFERENCE}}\",\n  \"amount\": {{AMOUNT}},\n  \"currency\": \"{{CURRENCY}}\",\n  \"channel\": \"WEB\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{OMARI_URL}}/api/merchant/api/payment/auth",
+              "host": [
+                "{{OMARI_URL}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "api",
+                "payment",
+                "auth"
+              ]
+            },
+            "description": "Matches OmariPaymentService::createPaymentRequest auth endpoint."
+          }
+        },
+        {
+          "name": "Process OTP Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Merchant-Key",
+                "value": "{{OMARI_MERCHANT_KEY}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"msisdn\": \"{{OMARI_MSISDN}}\",\n  \"reference\": \"{{OMARI_REFERENCE}}\",\n  \"otp\": \"{{OMARI_OTP}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{OMARI_URL}}/api/merchant/api/payment/request",
+              "host": [
+                "{{OMARI_URL}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "api",
+                "payment",
+                "request"
+              ]
+            },
+            "description": "Matches OmariPaymentService::processPayment."
+          }
+        },
+        {
+          "name": "Query Payment",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Merchant-Key",
+                "value": "{{OMARI_MERCHANT_KEY}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{OMARI_URL}}/api/merchant/api/payment/query/{{OMARI_REFERENCE}}",
+              "host": [
+                "{{OMARI_URL}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "api",
+                "payment",
+                "query",
+                "{{OMARI_REFERENCE}}"
+              ]
+            },
+            "description": "Matches OmariPaymentService::inquirePaymentRequest."
+          }
+        }
+      ]
+    },
+    {
+      "name": "ZimSwitch",
+      "item": [
+        {
+          "name": "Create Checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ZIMSWITCH_AUTH_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "entityId",
+                  "value": "{{ZIMSWITCH_ENTITY_ID}}",
+                  "type": "text"
+                },
+                {
+                  "key": "amount",
+                  "value": "{{AMOUNT}}",
+                  "type": "text"
+                },
+                {
+                  "key": "currency",
+                  "value": "{{CURRENCY}}",
+                  "type": "text"
+                },
+                {
+                  "key": "paymentType",
+                  "value": "DB",
+                  "type": "text"
+                },
+                {
+                  "key": "testMode",
+                  "value": "EXTERNAL",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{ZIMSWITCH_URL}}/v1/checkouts",
+              "host": [
+                "{{ZIMSWITCH_URL}}"
+              ],
+              "path": [
+                "v1",
+                "checkouts"
+              ]
+            },
+            "description": "Equivalent OPPWA checkout call used by Zimswitch integration."
+          }
+        },
+        {
+          "name": "Get Checkout Payment Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ZIMSWITCH_AUTH_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{ZIMSWITCH_URL}}/v1/checkouts/{{ZIMSWITCH_CHECKOUT_ID}}/payment?entityId={{ZIMSWITCH_ENTITY_ID}}",
+              "host": [
+                "{{ZIMSWITCH_URL}}"
+              ],
+              "path": [
+                "v1",
+                "checkouts",
+                "{{ZIMSWITCH_CHECKOUT_ID}}",
+                "payment"
+              ],
+              "query": [
+                {
+                  "key": "entityId",
+                  "value": "{{ZIMSWITCH_ENTITY_ID}}"
+                }
+              ]
+            },
+            "description": "Matches ZimswitchPaymentService::getPaymentStatus."
+          }
+        },
+        {
+          "name": "Get Resource Path Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ZIMSWITCH_AUTH_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{ZIMSWITCH_URL}}{{ZIMSWITCH_RESOURCE_PATH}}?entityId={{ZIMSWITCH_ENTITY_ID}}",
+              "host": [
+                "{{ZIMSWITCH_URL}}"
+              ],
+              "path": [
+                "{{ZIMSWITCH_RESOURCE_PATH}}"
+              ],
+              "query": [
+                {
+                  "key": "entityId",
+                  "value": "{{ZIMSWITCH_ENTITY_ID}}"
+                }
+              ]
+            },
+            "description": "Matches ZimswitchPaymentService::checkPaymentStatus resourcePath flow."
+          }
+        }
+      ]
+    },
+    {
+      "name": "iVeri",
+      "item": [
+        {
+          "name": "Process Card Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Version\": \"2.0\",\n  \"CertificateID\": \"{{IVERI_CERTIFICATE_ID}}\",\n  \"ProductType\": \"Enterprise\",\n  \"ProductVersion\": \"WebAPI\",\n  \"Direction\": \"Request\",\n  \"Transaction\": {\n    \"ApplicationID\": \"{{IVERI_APPLICATION_ID}}\",\n    \"Command\": \"Debit\",\n    \"Mode\": \"{{IVERI_MODE}}\",\n    \"Amount\": \"1000\",\n    \"Currency\": \"{{CURRENCY}}\",\n    \"MerchantReference\": \"{{REFERENCE}}\",\n    \"PAN\": \"4111111111111111\",\n    \"ExpiryDate\": \"0127\",\n    \"CardSecurityCode\": \"123\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{IVERI_URL}}/api/transactions",
+              "host": [
+                "{{IVERI_URL}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ]
+            },
+            "description": "Matches IVeriPaymentService::processPayment payload structure."
+          }
+        },
+        {
+          "name": "Query Payment Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Version\": \"2.0\",\n  \"CertificateID\": \"{{IVERI_CERTIFICATE_ID}}\",\n  \"ProductType\": \"Enterprise\",\n  \"ProductVersion\": \"WebAPI\",\n  \"Direction\": \"Request\",\n  \"Transaction\": {\n    \"ApplicationID\": \"{{IVERI_APPLICATION_ID}}\",\n    \"Command\": \"Query\",\n    \"Mode\": \"{{IVERI_MODE}}\",\n    \"TransactionIndex\": \"{{IVERI_TRANSACTION_INDEX}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{IVERI_URL}}/api/transactions",
+              "host": [
+                "{{IVERI_URL}}"
+              ],
+              "path": [
+                "api",
+                "transactions"
+              ]
+            },
+            "description": "Matches IVeriPaymentService::checkPaymentStatus."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "INNBUCKS_URL", "value": "https://gateway.innbucks.co.zw", "type": "string" },
+    { "key": "INNBUCKS_USERNAME", "value": "ProdleaderEnterprisesClientVaTqkmBp", "type": "string" },
+    { "key": "INNBUCKS_PASSWORD", "value": "yWDX64AQO8MSYY8sC56p", "type": "string" },
+    { "key": "INNBUCKS_KEY", "value": "ed708849-c66e-4bc9-87d2-870a89b766ca", "type": "string" },
+    { "key": "ECOCASH_URL", "value": "https://payonline.econet.co.zw/ecocashGateway/payment/v1", "type": "string" },
+    { "key": "ECOCASH_USERNAME", "value": "LEADER", "type": "string" },
+    { "key": "ECOCASH_PASSWORD", "value": "830;tbpBLTC44kP", "type": "string" },
+    { "key": "ECOCASH_MERCHANT_CODE", "value": "052966", "type": "string" },
+    { "key": "ECOCASH_MERCHANT_PIN", "value": "3715", "type": "string" },
+    { "key": "ECOCASH_MERCHANT_NUMBER", "value": "782741012", "type": "string" },
+    { "key": "OMARI_URL", "value": "https://omari.v.co.zw/vsuite/omari", "type": "string" },
+    { "key": "OMARI_MERCHANT_KEY", "value": "7fddb5ae-cbba-44a8-aab4-cecb6c1914c7", "type": "string" },
+    { "key": "ZIMSWITCH_URL", "value": "https://eu-prod.oppwa.com", "type": "string" },
+    { "key": "ZIMSWITCH_ENTITY_ID", "value": "8acda4c999c83f980199cd3067d8201c", "type": "string" },
+    { "key": "ZIMSWITCH_AUTH_TOKEN", "value": "OGFjZGE0Yzk5OWM4M2Y5ODAxOTljZDJmYjdkMzIwMTB8VSFnWENxeGhZNHNVeXBBN2FYODI=", "type": "string" },
+    { "key": "ZIMSWITCH_PAYMENT_BRAND", "value": "Private Label", "type": "string" },
+    { "key": "IVERI_URL", "value": "https://portal.host.iveri.com", "type": "string" },
+    { "key": "IVERI_APPLICATION_ID", "value": "{2e2f4753-5d6e-4f49-a608-133292406cb1}", "type": "string" },
+    { "key": "IVERI_CERTIFICATE_ID", "value": "{df09b961-8d62-4fde-a83c-855f933f5bcd}", "type": "string" },
+    { "key": "IVERI_USER_GROUP", "value": "643322", "type": "string" },
+    { "key": "IVERI_MODE", "value": "TEST", "type": "string" },
+    { "key": "IVERI_VERSION", "value": "1.0", "type": "string" },
+    { "key": "INNBUCKS_ACCESS_TOKEN", "value": "", "type": "string" },
+    { "key": "REFERENCE", "value": "test-reference-001", "type": "string" },
+    { "key": "PHONE_NUMBER", "value": "263771234567", "type": "string" },
+    { "key": "INNBUCKS_CODE", "value": "sample-code", "type": "string" },
+    { "key": "AMOUNT", "value": "1.00", "type": "string" },
+    { "key": "CURRENCY", "value": "USD", "type": "string" },
+    { "key": "NOTIFY_URL", "value": "https://example.com/webhook", "type": "string" },
+    { "key": "ECOCASH_PHONE_NUMBER", "value": "263771234567", "type": "string" },
+    { "key": "ECOCASH_CLIENT_CORRELATOR", "value": "NPG_TEST_001", "type": "string" },
+    { "key": "OMARI_REFERENCE", "value": "omari-ref-001", "type": "string" },
+    { "key": "OMARI_MSISDN", "value": "263771234567", "type": "string" },
+    { "key": "OMARI_OTP", "value": "123456", "type": "string" },
+    { "key": "ZIMSWITCH_CHECKOUT_ID", "value": "8ac7a4c98ef4ba4f018ef4bd2f870001", "type": "string" },
+    { "key": "ZIMSWITCH_RESOURCE_PATH", "value": "/v1/checkouts/8ac7a4c98ef4ba4f018ef4bd2f870001/payment", "type": "string" },
+    { "key": "IVERI_TRANSACTION_INDEX", "value": "sample-transaction-index", "type": "string" }
+  ]
+}
