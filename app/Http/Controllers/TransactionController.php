@@ -379,9 +379,36 @@ class TransactionController extends Controller
                 return $this->handleCancelledTransaction($transaction);
             }
 
-            // If already completed
+            // If already completed, just echo the result. Do NOT call
+            // finalizeSuccessfulTransaction here - that helper always creates
+            // a new transaction row, which would duplicate this one.
             if ($transaction->type === 'PAYMENT' && $transaction->status === 'COMPLETED') {
-                return $this->finalizeSuccessfulTransaction($transaction, json_decode($transaction->response, true));
+                $user = $this->getUserFromTransaction($transaction);
+                return response()->json([
+                    'success' => true,
+                    'status' => 'COMPLETED',
+                    'responseCode' => $transaction->response_code ?? '00',
+                    'trace' => $transaction->trace,
+                    'returnUrl' => $user->return_url ?? null,
+                    'responseMessage' => 'Transaction completed successfully.',
+                    'message' => 'Transaction Paid successfully.',
+                    'transaction' => $transaction,
+                    'data' => json_decode($transaction->response, true),
+                ]);
+            }
+
+            // Similarly, a FAILED PAYMENT row is terminal - echo it, don't reprocess.
+            if ($transaction->type === 'PAYMENT' && $transaction->status === 'FAILED') {
+                $user = $this->getUserFromTransaction($transaction);
+                return response()->json([
+                    'success' => false,
+                    'status' => 'FAILED',
+                    'responseCode' => $transaction->response_code ?? '01',
+                    'trace' => $transaction->trace,
+                    'returnUrl' => $user->return_url ?? null,
+                    'responseMessage' => $transaction->error_message ?? 'Transaction failed.',
+                    'data' => json_decode($transaction->response, true),
+                ]);
             }
 
             // Perform a fresh inquiry based on payment method

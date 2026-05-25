@@ -851,6 +851,29 @@ export default {
                     }
 
                     // [Code removed: This block is no longer needed as it's been refactored into helper methods]
+                } else if (response.data.status === 'COMPLETED') {
+                    // Backend already finalized the transaction synchronously
+                    // (e.g. iVeri auto-approval). Don't start polling - polling
+                    // would hit /transactions/status and could duplicate work.
+                    this.isLoading = false;
+                    this.$swal.fire(
+                        "Success",
+                        response.data.responseMessage || "Your transaction was successfully completed!",
+                        "success"
+                    ).then(() => {
+                        window.location.href = response.data.returnUrl || this.returnUrl || '/';
+                    });
+                } else if (response.data.status === 'FAILED') {
+                    this.isLoading = false;
+                    this.$swal.fire(
+                        "Payment Failed",
+                        response.data.responseMessage || "Transaction failed.",
+                        "error"
+                    ).then(() => {
+                        if (response.data.returnUrl) {
+                            window.location.href = response.data.returnUrl;
+                        }
+                    });
                 } else {
                     // Normal flow for other payment methods
                     this.confirmPaymentSuccess(response.data.data, response.data.trace);
