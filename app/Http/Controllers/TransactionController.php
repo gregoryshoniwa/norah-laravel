@@ -181,6 +181,23 @@ class TransactionController extends Controller
                 ],
             ]);
 
+            // For VISA_MASTER, if iVeri returned a synchronous final result
+            // (no 3DS redirect/ACS payload was emitted above), finalize the
+            // row right now so it appears in the back office with type=PAYMENT.
+            if ($paymentMethod === 'VISA_MASTER') {
+                if (!empty($response['success'])) {
+                    return $this->finalizeSuccessfulTransaction($transaction, $response);
+                }
+                if (!empty($response['error'])) {
+                    return $this->handleFailedTransaction(
+                        $transaction,
+                        $response['message'] ?? 'Card payment failed.',
+                        $response['code'] ?? '01',
+                        $response['message'] ?? null
+                    );
+                }
+            }
+
             // Handle payment errors for Omari or Zimswitch
             if (($paymentMethod === 'OMARI' && isset($hasError) && $hasError) ||
                 ($paymentMethod === 'ZIMSWITCH' && isset($response['error']) && $response['error'] === true)) {
@@ -1834,6 +1851,60 @@ class TransactionController extends Controller
                 'url' => $checkoutUrl,
             ],
         ], 200);
+    }
+
+    /**
+     * Handle the iVeri 3D Secure return.
+     *
+     * The issuer ACS posts/redirects the browser back to this URL inside the
+     * 3DS popup. We look up the CONFIRM transaction by trace, ask iVeri for
+     * the final status, persist it (so the back office sees a PAYMENT row),
+     * then render a tiny page that messages the parent window and closes.
+     */
+    public function handleIveriCallback(Request $request)
+    {
+        $trace = $request->input('reference') ?? $request->query('reference');
+        $status = 'UNKNOWN';
+
+        try {
+            if ($trace) {
+                $transaction = Transaction::where('trace', $trace)
+                    ->where('payment_method', 'VISA_MASTER')
+                    ->whereIn('type', ['CONFIRM', 'PAYMENT'])
+                    ->orderByDesc('id')
+                    ->first();
+
+                if ($transaction && $transaction->reference) {
+                    $inquiry = $this->iveriService->checkPaymentStatus($transaction->reference);
+
+                    if (!empty($inquiry['success'])) {
+                        if ($transaction->status !== 'COMPLETED' && $transaction->status !== 'PROCESSED') {
+                            $this->finalizeSuccessfulTransaction($transaction, $inquiry);
+                        }
+                        $status = 'COMPLETED';
+                    } elseif (!empty($inquiry['error'])) {
+                        if ($transaction->status !== 'FAILED') {
+                            $this->handleFailedTransaction(
+                                $transaction,
+                                $inquiry['message'] ?? 'Card payment failed.',
+                                $inquiry['data']['StatusCode'] ?? '01',
+                                $inquiry['message'] ?? null
+                            );
+                        }
+                        $status = 'FAILED';
+                    } else {
+                        $status = 'PENDING';
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('iVeri callback error: ' . $e->getMessage(), ['trace' => $trace]);
+        }
+
+        return response()->view('payment.iveri_callback', [
+            'trace' => $trace,
+            'status' => $status,
+        ]);
     }
 
     /**

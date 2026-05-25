@@ -40,10 +40,9 @@ class IVeriPaymentService
         // Generate a unique transaction ID if not provided
         $transactionId = $data['trace'] ?? (string) Str::uuid();
 
-        // Format amount as required by iVeri (No decimal point, padded with zeros)
-        $amount = number_format($data['amount'] * 100, 0, '', '');
+        // iVeri expects amount in minor units (cents). Use integer math to avoid float drift.
+        $amount = (string) (int) round(((float) ($data['amount'] ?? 0)) * 100);
 
-        // Using the exact structure from the working cURL example
         $payload = [
             'Version' => '2.0',
             'CertificateID' => $this->certificateId,
@@ -60,19 +59,21 @@ class IVeriPaymentService
                 'ApplicationMerchantCity' => 'Harare',
                 'ApplicationMerchantCountryCode' => 'ZW',
                 'ApplicationMerchantName' => 'Norah Payment Gateway',
-                // Card details
                 'PAN' => preg_replace('/\s+/', '', $data['cardNumber'] ?? ''),
                 'ExpiryDate' => $this->formatExpiryDateForIveri($data['expiryDate'] ?? ''),
                 'CardSecurityCode' => $data['cvv'] ?? '',
-                // Standard 3D Secure parameters
                 'ThreeDSecure_Required' => 'true',
                 'ThreeDSecure_Enabled' => 'true',
-                'ElectronicCommerceIndicator' => 'ThreeDSecure', // Required to avoid Code 255 error
-                'ThreeDSecure_TermUrl' => url('/payment/callback?reference=' . $transactionId),
-                'ThreeDSecure_AuthenticationType' => '01', // Fully authenticated transaction (01)
+                'ThreeDSecure_TermUrl' => url('/payment/iveri/callback?reference=' . $transactionId),
                 'ThreeDSecure_ProtocolVersion' => '2.1.0',
-                'CardHolderAuthenticationData' => 'AJkBCWhygQAAAAEDhXKBAAAAAAA=', // Required to avoid Code 255 error
-                'CardHolderAuthenticationID' => 'xVyRZy0bYuN69j1pZi/zlmC68Vw=', // Matching authentication ID
+                // CBZ/iVeri Live profile (Code 255) requires an explicit ECI
+                // declaration plus matching CAVV+AuthID. Until a real 3DS Lookup
+                // flow is implemented, declare ThreeDSecure with the placeholder
+                // values previously accepted by this tenant.
+                'ElectronicCommerceIndicator' => 'ThreeDSecure',
+                'ThreeDSecure_AuthenticationType' => '01',
+                'CardHolderAuthenticationData' => 'AJkBCWhygQAAAAEDhXKBAAAAAAA=',
+                'CardHolderAuthenticationID' => 'xVyRZy0bYuN69j1pZi/zlmC68Vw=',
             ]
         ];
 

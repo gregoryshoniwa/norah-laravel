@@ -13,6 +13,9 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 // Zimswitch payment callback
 Route::get('/payment/callback', [\App\Http\Controllers\TransactionController::class, 'handlePaymentCallback'])->name('payment.callback');
 
+// iVeri (VISA/MasterCard) 3D Secure callback - rendered inside the popup.
+Route::match(['get', 'post'], '/payment/iveri/callback', [\App\Http\Controllers\TransactionController::class, 'handleIveriCallback'])->name('payment.iveri.callback');
+
 // Payment result pages
 Route::get('/payment/success', function () {
     $reference = request('reference');

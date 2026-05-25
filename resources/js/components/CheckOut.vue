@@ -857,17 +857,23 @@ export default {
                 }
 
             } else {
+                const failMsg = response.data.responseMessage
+                    || response.data.message
+                    || (response.data.data && (response.data.data.message || response.data.data.responseMessage))
+                    || "Payment confirmation failed.";
                 this.$swal.fire(
                     "Payment Failed",
-                   response.data.message || "Payment confirmation failed.",
+                    failMsg,
                     "error"
                 );
-                // alert('Payment confirmation failed: ' + response.data.message);
             }
         } catch (error) {
             console.error('Error confirming payment:', error);
             this.isLoading = false;
-            const errMsg = error.response?.data?.message || error.message || 'An error occurred while confirming the payment.';
+            const errMsg = error.response?.data?.responseMessage
+                || error.response?.data?.message
+                || error.message
+                || 'An error occurred while confirming the payment.';
             this.$swal.fire(
                 "Payment Failed",
                 errMsg,
@@ -876,8 +882,8 @@ export default {
         }
     },
     async confirmPaymentSuccess(data, trace) {
-            this.code = data.code;
-            this.qrCode = data.code;
+            this.code = data && data.code ? data.code : null;
+            this.qrCode = this.code;
             this.trace = trace;
 
             if (this.selectedPaymentType === "mobile") {
@@ -895,6 +901,14 @@ export default {
                 this.remainingTime = this.countdownTime;
 
                 // Start countdown and polling
+                this.startCountdown();
+                this.startPolling(trace);
+            } else if (this.selectedMethod === "visa_master") {
+                // Card payment was approved synchronously by iVeri (no 3DS step-up).
+                // Poll the backend so we promote the row to PAYMENT and redirect.
+                this.isProcessing = true;
+                this.countdownTime = 2 * 60;
+                this.remainingTime = this.countdownTime;
                 this.startCountdown();
                 this.startPolling(trace);
             }
@@ -1222,8 +1236,54 @@ export default {
             // Open the popup window immediately
             openPopup();
 
+            // Watch the popup + listen for the postMessage from the iVeri callback.
+            this.watchIveriPopup(() => popupWindow);
+
             this.isLoading = false;
             console.log('Opening 3D Secure popup window with URL:', redirectUrl);
+        },
+
+        /**
+         * Bridges a 3DS popup back to the parent: starts polling, listens for the
+         * iveri:done postMessage from our callback view, and falls back to
+         * detecting popupWindow.closed. Safe to call once per opened popup.
+         */
+        watchIveriPopup(getPopupWindow) {
+            // Kick off polling immediately - it will pick up the final state
+            // whether the popup posts back, is closed manually, or never returns.
+            this.isProcessing = true;
+            if (!this.countdownInterval) {
+                this.countdownTime = 5 * 60;
+                this.remainingTime = this.countdownTime;
+                this.startCountdown();
+            }
+            if (!this.pollingInterval) {
+                this.startPolling(this.trace);
+            }
+
+            // postMessage from the iVeri callback view
+            if (!this._iveriMessageHandler) {
+                this._iveriMessageHandler = (event) => {
+                    const data = event && event.data;
+                    if (!data || data.source !== 'iveri') return;
+                    if (data.trace && data.trace !== this.trace) return;
+                    this.checkTransactionStatus(this.trace);
+                };
+                window.addEventListener('message', this._iveriMessageHandler);
+            }
+
+            // popup-closed watcher
+            if (this._iveriPopupWatcher) {
+                clearInterval(this._iveriPopupWatcher);
+            }
+            this._iveriPopupWatcher = setInterval(() => {
+                const popup = getPopupWindow();
+                if (!popup || popup.closed) {
+                    clearInterval(this._iveriPopupWatcher);
+                    this._iveriPopupWatcher = null;
+                    this.checkTransactionStatus(this.trace);
+                }
+            }, 1500);
         },
 
         /**
@@ -1309,7 +1369,7 @@ export default {
             const termUrlInput = document.createElement('input');
             termUrlInput.type = 'hidden';
             termUrlInput.name = 'TermUrl';
-            termUrlInput.value = window.location.origin + '/payment/callback';
+            termUrlInput.value = window.location.origin + '/payment/iveri/callback?reference=' + encodeURIComponent(this.trace || '');
             form.appendChild(termUrlInput);
 
             // Add MD (merchant data)
@@ -1398,6 +1458,10 @@ export default {
 
             // Open the popup after a brief delay
             setTimeout(openPopupAndSubmitForm, 1000);
+
+            // Hook the popup-watcher / postMessage listener so the parent reacts
+            // when the issuer's ACS posts back to /payment/iveri/callback.
+            this.watchIveriPopup(() => popupWindow);
 
             this.isLoading = false;
             console.log('Opening 3D Secure popup for ACS URL:', acsUrl);
