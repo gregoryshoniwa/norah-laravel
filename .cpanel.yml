@@ -1,5 +1,13 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/npgcozw/public_html/
-    - /bin/cp -R app bootstrap config database public resources routes storage artisan composer.json composer.lock package.json yarn.lock vite.config.js $DEPLOYPATH
+    - export DEPLOYPATH=/home/npgcozw/public_html/live
+    - /bin/echo "Deploy started at $(date)"
+    - cd $DEPLOYPATH && /bin/chmod -R ug+rwX storage bootstrap/cache || true
+    - cd $DEPLOYPATH && php artisan storage:link || true
+    - cd $DEPLOYPATH && php artisan migrate --force
+    - cd $DEPLOYPATH && php artisan config:clear
+    - cd $DEPLOYPATH && php artisan route:clear
+    - cd $DEPLOYPATH && php artisan view:clear
+    - cd $DEPLOYPATH && php artisan cache:clear
+    - /bin/echo "Deploy finished at $(date)"
