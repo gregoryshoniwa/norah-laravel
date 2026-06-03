@@ -3,6 +3,7 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/npgcozw/public_html/live
     - /bin/echo "Deploy started at $(date)"
+    - /usr/bin/find $DEPLOYPATH -maxdepth 3 -name "error_log" -type f -delete || true
     - cd $DEPLOYPATH && /bin/chmod -R ug+rwX storage bootstrap/cache || true
     - cd $DEPLOYPATH && php artisan storage:link || true
     - cd $DEPLOYPATH && php artisan migrate --force

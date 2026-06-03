@@ -42,3 +42,9 @@ Thumbs.db
 # Logs
 *.log
 .yarn
+
+# cPanel / PHP runtime error file - written by Apache/PHP, never tracked.
+# Without this, an error_log appearing on the server makes the working tree
+# dirty and cPanel refuses to deploy.
+error_log
+**/error_log
