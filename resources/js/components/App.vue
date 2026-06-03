@@ -13,18 +13,21 @@
       </transition>
     </router-view>
     <BackToTop />
+    <ReauthModal />
   </div>
 </template>
 
 <script>
 import Preloader from "./Preloader.vue";
 import BackToTop from "./BackToTop.vue";
+import ReauthModal from "./ReauthModal.vue";
 
 export default {
   name: "App",
   components: {
     Preloader,
-    BackToTop
+    BackToTop,
+    ReauthModal
   },
   data() {
     return {

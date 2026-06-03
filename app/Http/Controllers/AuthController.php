@@ -304,6 +304,41 @@ class AuthController extends Controller
         }
     }
 
+    /**
+     * Re-authenticate an existing user with just their password. Issues a
+     * fresh JWT so the front-end can retry the request that hit 401.
+     * Public route - no Authorization header expected (the user's session is dead).
+     */
+    public function reauth(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|string|email',
+            'password' => 'required|string',
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+        if (!$user) {
+            return response()->json(['message' => 'Invalid credentials'], 401);
+        }
+
+        if (!$user->is_activated) {
+            return response()->json(['message' => 'Account is not active.'], 403);
+        }
+
+        $token = JWTAuth::attempt($request->only('email', 'password'));
+        if (!$token) {
+            return response()->json(['message' => 'Invalid credentials'], 401);
+        }
+
+        return response()->json([
+            'token' => $token,
+            'tokenExpiryDate' => now()->addHours(1)->toRfc7231String(),
+            'user_id' => $user->id,
+            'role' => $user->role,
+            'email' => $user->email,
+        ]);
+    }
+
     public function forgotPassword(Request $request)
     {
         $request->validate([

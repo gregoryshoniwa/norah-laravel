@@ -59,7 +59,7 @@
     "src": "resources/fonts/remixicon.woff2"
   },
   "resources/js/app.js": {
-    "file": "assets/app-DN3RKFMH.js",
+    "file": "assets/app-BySXLVmv.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -78,7 +78,7 @@
       "node_modules/vue3-apexcharts/dist/apexcharts.ssr.esm-fe46cd2d.js"
     ],
     "css": [
-      "assets/app-Bgbxo0eu.css",
+      "assets/app-Bcqri4_T.css",
       "assets/app-DxaHYrud.css"
     ],
     "assets": [
@@ -97,7 +97,7 @@
     ]
   },
   "resources/js/components/SuperDashboard.vue": {
-    "file": "assets/SuperDashboard-Dm3ceZa9.js",
+    "file": "assets/SuperDashboard-BC_EadGD.js",
     "name": "SuperDashboard",
     "src": "resources/js/components/SuperDashboard.vue",
     "isDynamicEntry": true,
@@ -110,7 +110,7 @@
     ]
   },
   "resources/js/components/pages/Charges.vue": {
-    "file": "assets/Charges-XXn7HRQQ.js",
+    "file": "assets/Charges-C_IblSB1.js",
     "name": "Charges",
     "src": "resources/js/components/pages/Charges.vue",
     "isDynamicEntry": true,
@@ -123,7 +123,7 @@
     ]
   },
   "resources/js/components/pages/DashboardHome.vue": {
-    "file": "assets/DashboardHome-DHYtEhRL.js",
+    "file": "assets/DashboardHome-D9GtBtEt.js",
     "name": "DashboardHome",
     "src": "resources/js/components/pages/DashboardHome.vue",
     "isDynamicEntry": true,
@@ -136,7 +136,7 @@
     ]
   },
   "resources/js/components/pages/Settings.vue": {
-    "file": "assets/Settings-Bz2JEahH.js",
+    "file": "assets/Settings-88SwIdfP.js",
     "name": "Settings",
     "src": "resources/js/components/pages/Settings.vue",
     "isDynamicEntry": true,
@@ -149,7 +149,7 @@
     ]
   },
   "resources/js/components/pages/SuperCharges.vue": {
-    "file": "assets/SuperCharges-DSm1J1l8.js",
+    "file": "assets/SuperCharges-offgL_4R.js",
     "name": "SuperCharges",
     "src": "resources/js/components/pages/SuperCharges.vue",
     "isDynamicEntry": true,
@@ -162,7 +162,7 @@
     ]
   },
   "resources/js/components/pages/SuperDashboardHome.vue": {
-    "file": "assets/SuperDashboardHome-DCje4kQ-.js",
+    "file": "assets/SuperDashboardHome-Dgy51l62.js",
     "name": "SuperDashboardHome",
     "src": "resources/js/components/pages/SuperDashboardHome.vue",
     "isDynamicEntry": true,
@@ -175,7 +175,7 @@
     ]
   },
   "resources/js/components/pages/SuperMerchants.vue": {
-    "file": "assets/SuperMerchants-B-0Pj7il.js",
+    "file": "assets/SuperMerchants-CqXMLAfB.js",
     "name": "SuperMerchants",
     "src": "resources/js/components/pages/SuperMerchants.vue",
     "isDynamicEntry": true,
@@ -188,7 +188,7 @@
     ]
   },
   "resources/js/components/pages/SuperTransactions.vue": {
-    "file": "assets/SuperTransactions-BXmfT3v5.js",
+    "file": "assets/SuperTransactions-C4h-F4lz.js",
     "name": "SuperTransactions",
     "src": "resources/js/components/pages/SuperTransactions.vue",
     "isDynamicEntry": true,
@@ -201,7 +201,7 @@
     ]
   },
   "resources/js/components/pages/SuperUsers.vue": {
-    "file": "assets/SuperUsers-Dw8nt_Cn.js",
+    "file": "assets/SuperUsers-Bfqq1jCO.js",
     "name": "SuperUsers",
     "src": "resources/js/components/pages/SuperUsers.vue",
     "isDynamicEntry": true,
@@ -214,7 +214,7 @@
     ]
   },
   "resources/js/components/pages/Transactions.vue": {
-    "file": "assets/Transactions-DNbi53J-.js",
+    "file": "assets/Transactions-BDVr-iOR.js",
     "name": "Transactions",
     "src": "resources/js/components/pages/Transactions.vue",
     "isDynamicEntry": true,

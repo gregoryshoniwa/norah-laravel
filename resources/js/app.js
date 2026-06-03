@@ -2,6 +2,7 @@ import './bootstrap';
 import { createApp } from 'vue';
 import App from './components/App.vue';
 import router from './router';
+import { installAxiosSessionGuard, registerRouter } from './auth/sessionGuard';
 import '../css/app.css';
 // import '../custom.scss';
 import AOS from "aos";
@@ -31,6 +32,10 @@ app.use(VueApexCharts);
 
 
 app.use(BootstrapVue3);
+
+// Install the session guard before mount so any boot-time 401 is caught.
+registerRouter(router);
+installAxiosSessionGuard();
 
 // Initialize AOS after mounting
 app.mount('#app');

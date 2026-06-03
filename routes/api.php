@@ -53,6 +53,7 @@ Route::middleware([JwtMiddleware::class])->group(function () {
     Route::post('/auth/resend-confirmation-email', [AuthController::class, 'resendConfirmationEmail']);
     Route::post('/auth/sign-in', [AuthController::class, 'signIn']);
     Route::post('/auth/refresh-token', [AuthController::class, 'refreshToken']);
+    Route::post('/auth/reauth', [AuthController::class, 'reauth']);
     Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
 
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
