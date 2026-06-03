@@ -147,6 +147,7 @@ class TransactionController extends Controller
             $transaction->expiry_date = $request->input('expiryDate');
             $transaction->trace = $transactionTrace;
             $transaction->reference = $reference;
+            $transaction->customer_reference = $this->normaliseCustomerReference($request->input('customerReference'));
             $transaction->currency = $request->input('currency');
             $transaction->amount = number_format((float) $request->input('amount'), 2, '.', '');
             $transaction->charge = number_format((float) $request->input('charge'), 2, '.', '');
@@ -304,6 +305,7 @@ class TransactionController extends Controller
                 $failedTransaction->type = 'PAYMENT';
                 $failedTransaction->pan = $request->input('pan') ?? $request->input('phoneNumber');
                 $failedTransaction->trace = $transactionTrace;
+                $failedTransaction->customer_reference = $this->normaliseCustomerReference($request->input('customerReference'));
                 $failedTransaction->currency = $request->input('currency');
                 $failedTransaction->amount = number_format((float) $request->input('amount'), 2, '.', '');
                 $failedTransaction->charge = number_format((float) $request->input('charge'), 2, '.', '');
@@ -635,6 +637,7 @@ class TransactionController extends Controller
                 'expiry_date' => $originalTransaction->expiry_date,
                 'trace' => $originalTransaction->trace,
                 'reference' => $originalTransaction->reference,
+                'customer_reference' => $originalTransaction->customer_reference,
                 'currency' => $originalTransaction->currency,
                 // Keep customer amount and charge separate.
                 'amount' => number_format((float) $originalTransaction->amount, 2, '.', ''),
@@ -1068,6 +1071,7 @@ class TransactionController extends Controller
         $validator = Validator::make($request->all(), [
             'amount' => 'required|numeric|min:0.01',
             'currency' => 'required|string|max:3',
+            'customerReference' => 'sometimes|nullable|string|max:60',
         ]);
 
         if ($validator->fails()) {
@@ -1077,6 +1081,7 @@ class TransactionController extends Controller
         // Extract request data
         $amount = $request->amount;
         $currency = $request->currency;
+        $customerReference = $this->normaliseCustomerReference($request->input('customerReference'));
         $calculatedSystemCharge = 0;
 
         // Retrieve the system charge based on the currency and thresholds
@@ -1112,6 +1117,7 @@ class TransactionController extends Controller
             'name' => $authenticatedUser->company_name,
             'description' => $authenticatedUser->description,
             'user' => $authenticatedUser->email,
+            'customerReference' => $customerReference,
             'sub' => 'Payment',
             'iat' => now()->timestamp,
             'exp' => now()->addMinutes(1)->timestamp, // Token expires in 1 minute
@@ -1326,6 +1332,7 @@ class TransactionController extends Controller
                         $search = strtolower($search);
                         $q->where('id', 'LIKE', "%{$search}%")
                           ->orWhere('user_name', 'LIKE', "%{$search}%")
+                          ->orWhere('customer_reference', 'LIKE', "%{$search}%")
                           ->orWhereRaw('LOWER(CAST(amount AS CHAR)) LIKE ?', ["%{$search}%"])
                           ->orWhere('status', 'LIKE', "%{$search}%")
                           ->orWhere('currency', 'LIKE', "%{$search}%");
@@ -1400,6 +1407,7 @@ class TransactionController extends Controller
                     $q->where('id', 'LIKE', "%{$search}%")
                       ->orWhere('user_name', 'LIKE', "%{$search}%")
                       ->orWhere('reference', 'LIKE', "%{$search}%")
+                      ->orWhere('customer_reference', 'LIKE', "%{$search}%")
                       ->orWhere('trace', 'LIKE', "%{$search}%")
                       ->orWhere('payment_method', 'LIKE', "%{$search}%")
                       ->orWhereRaw('LOWER(CAST(amount AS CHAR)) LIKE ?', ["%{$search}%"])
@@ -1775,6 +1783,7 @@ class TransactionController extends Controller
         $validator = Validator::make($request->all(), [
             'amount' => 'required|numeric|min:0.01',
             'currency' => 'required|string|max:3',
+            'customerReference' => 'sometimes|nullable|string|max:60',
         ]);
 
         if ($validator->fails()) {
@@ -1784,6 +1793,7 @@ class TransactionController extends Controller
         // Extract request data
         $amount = $request->amount;
         $currency = $request->currency;
+        $customerReference = $this->normaliseCustomerReference($request->input('customerReference'));
         $calculatedSystemCharge = 0;
 
         // Find the user associated with the authenticated user
@@ -1854,6 +1864,7 @@ class TransactionController extends Controller
             'name' => $merchantUser->merchant_name,
             'description' => $merchantUser->merchant_description,
             'user' => $authenticatedUser->email,
+            'customerReference' => $customerReference,
             'sub' => 'MerchantPayment',
             'iat' => now()->timestamp,
             'exp' => now()->addMinutes(1)->timestamp,
@@ -2623,6 +2634,22 @@ class TransactionController extends Controller
     protected function audit(array $data): void
     {
         $this->transactionAuditService->record($data);
+    }
+
+    /**
+     * Trim and cap the payer-supplied reference so it fits the column
+     * and never carries through stray whitespace.
+     */
+    private function normaliseCustomerReference($value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return null;
+        }
+        return mb_substr($trimmed, 0, 60);
     }
 
     private function findZimswitchConfirmTransaction(

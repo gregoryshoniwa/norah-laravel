@@ -235,6 +235,20 @@
                     />
                     </div>
                 </div>
+
+                <!-- Optional payer reference (e.g. invoice / order number) -->
+                <div class="space-y-1">
+                    <label for="customerReference" class="block text-sm font-medium text-gray-700 mb-1">Reference <span class="text-gray-400 font-normal">(optional)</span></label>
+                    <input
+                        type="text"
+                        id="customerReference"
+                        v-model="paymentDetails.customerReference"
+                        maxlength="60"
+                        placeholder="e.g. invoice #1234"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                    <p class="text-xs text-gray-500">Add a note for the merchant. Shown in their transactions report.</p>
+                </div>
                 </div>
 
                 <!-- Step 3: Confirmation -->
@@ -268,6 +282,11 @@
                     <div v-if="isMobilePayment" class="flex justify-between">
                         <span class="text-gray-600">Phone Number</span>
                         <span class="font-medium">{{ paymentDetails.phoneNumber }}</span>
+                    </div>
+
+                    <div v-if="paymentDetails.customerReference" class="flex justify-between">
+                        <span class="text-gray-600">Reference</span>
+                        <span class="font-medium">{{ paymentDetails.customerReference }}</span>
                     </div>
                     </div>
                 </div>
@@ -509,7 +528,8 @@ export default {
                 expiryDate: '',
                 cvv: '',
                 nameOnCard: '',
-                phoneNumber: ''
+                phoneNumber: '',
+                customerReference: ''
             },
             detectedCardType: '',
             detectedCardIcon: '',
@@ -602,6 +622,12 @@ export default {
                     currency: this.tokenData.currency || 'USD'
                 };
 
+                // Pre-fill the payer reference if the merchant supplied one
+                // when generating the token. Leave it editable.
+                if (this.tokenData.customerReference) {
+                    this.paymentDetails.customerReference = String(this.tokenData.customerReference);
+                }
+
                 console.log('Payment object created:', this.payment);
             }
         } catch (error) {
@@ -691,12 +717,15 @@ export default {
         },
         selectPaymentMethod(methodId) {
             this.selectedMethod = methodId;
-            // Reset form fields when changing payment method
+            // Reset form fields when changing payment method, but keep the
+            // customer reference if the user already typed one.
+            const keepReference = this.paymentDetails.customerReference || '';
             this.paymentDetails = {
                 cardNumber: '',
                 expiryDate: '',
                 cvv: '',
-                phoneNumber: ''
+                phoneNumber: '',
+                customerReference: keepReference
             };
 
             // Automatically advance to the next step after selecting a payment method
@@ -726,6 +755,7 @@ export default {
             user: this.tokenData.user,
             narration: this.selectedMethodName.toUpperCase() + ' Payment',
             type: 'PAYMENT',
+            customerReference: (this.paymentDetails.customerReference || '').trim(),
         };
 
         // Save return URL to state for redirects

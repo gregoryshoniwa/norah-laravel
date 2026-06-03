@@ -73,6 +73,7 @@
               <th>To Customer</th>
               <th>Our Charge</th>
               <th>Method</th>
+              <th>Reference</th>
               <th>Company</th>
               <th>Status</th>
               <th>Actions</th>
@@ -88,6 +89,9 @@
                 <span class="method-badge" :class="methodClass(txn.payment_method)">
                   {{ formatMethod(txn.payment_method) }}
                 </span>
+              </td>
+              <td class="txn-reference" :title="txn.customer_reference || ''">
+                {{ txn.customer_reference || '—' }}
               </td>
               <td>{{ txn.company_name || '—' }}</td>
               <td>
@@ -107,7 +111,7 @@
           </tbody>
           <tbody v-else-if="loading">
             <tr>
-              <td colspan="8" class="text-center">
+              <td colspan="9" class="text-center">
                 <div class="loading-spinner">
                   <i class="ri-loader-4-line spin"></i> Loading...
                 </div>
@@ -116,7 +120,7 @@
           </tbody>
           <tbody v-else>
             <tr>
-              <td colspan="8" class="empty-state">
+              <td colspan="9" class="empty-state">
                 <i class="ri-inbox-line empty-icon"></i>
                 <p>No transactions found</p>
               </td>
@@ -202,8 +206,12 @@
               <span>{{ selectedTransaction.type || '—' }}</span>
             </div>
             <div class="detail-item">
-              <label>Reference</label>
+              <label>Gateway Reference</label>
               <span>{{ selectedTransaction.reference || '—' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Customer Reference</label>
+              <span>{{ selectedTransaction.customer_reference || '—' }}</span>
             </div>
             <div class="detail-item">
               <label>Trace</label>

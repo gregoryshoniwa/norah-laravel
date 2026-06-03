@@ -128,6 +128,7 @@
               <th>To Customer</th>
               <th>Our Charge</th>
               <th>Method</th>
+              <th>Reference</th>
               <th>Type</th>
               <th>Status</th>
               <th>Actions</th>
@@ -143,6 +144,9 @@
                 <span class="method-badge" :class="(transaction.payment_method || '').toLowerCase()">
                   {{ formatMethod(transaction.payment_method) }}
                 </span>
+              </td>
+              <td class="txn-reference" :title="transaction.customer_reference || ''">
+                {{ transaction.customer_reference || '—' }}
               </td>
               <td>{{ transaction.type }}</td>
               <td>
@@ -165,7 +169,7 @@
           </tbody>
           <tbody v-else-if="loading">
             <tr>
-              <td colspan="8" class="text-center">
+              <td colspan="9" class="text-center">
                 <div class="loading-spinner">
                   <i class="ri-loader-4-line spin"></i>
                   Loading...
@@ -175,7 +179,7 @@
           </tbody>
           <tbody v-else>
             <tr>
-              <td colspan="8" class="text-center empty-state">
+              <td colspan="9" class="text-center empty-state">
                 <i class="ri-inbox-line empty-icon"></i>
                 <p>No transactions found</p>
               </td>
@@ -254,6 +258,10 @@
             <div class="detail-item">
               <label>Customer</label>
               <span>{{ selectedTransaction.customer_name }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Reference</label>
+              <span>{{ selectedTransaction.customer_reference || '—' }}</span>
             </div>
           </div>
           <div class="timeline">

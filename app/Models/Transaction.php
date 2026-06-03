@@ -23,6 +23,7 @@ class Transaction extends Model
         'error_message',
         'display_error_message',
         'reference',
+        'customer_reference',
         'debit_reference',
         'credit_reference',
         'response_code',
@@ -42,6 +43,8 @@ class Transaction extends Model
         'transaction_status',
         'reference_code',
         'parent_transaction_id',
+        'pan',
+        'expiry_date',
         'deleted',
     ];
 
