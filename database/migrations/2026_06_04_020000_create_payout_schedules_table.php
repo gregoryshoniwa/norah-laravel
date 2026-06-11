@@ -16,11 +16,11 @@ return new class extends Migration
             $table->id();
             // Scope: a single recipient, OR a whole role bucket (ADMIN/MERCHANT), OR everyone.
             $table->unsignedBigInteger('recipient_user_id')->nullable();
-            $table->string('recipient_role_scope')->nullable(); // 'ADMIN' | 'MERCHANT' | null
+            $table->string('recipient_role_scope', 20)->nullable(); // 'ADMIN' | 'MERCHANT' | null
             $table->string('currency', 3);
 
             // Cadence
-            $table->string('cadence'); // DAILY | WEEKLY | MONTHLY
+            $table->string('cadence', 20); // DAILY | WEEKLY | MONTHLY
             $table->unsignedTinyInteger('day_of_week')->nullable(); // 1=Mon..7=Sun, for WEEKLY
             $table->unsignedTinyInteger('day_of_month')->nullable(); // 1..28, for MONTHLY (cap at 28 to avoid month-end edge cases)
 

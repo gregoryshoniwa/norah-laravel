@@ -17,11 +17,11 @@ return new class extends Migration
             $table->unsignedBigInteger('payout_id')->nullable();
             $table->unsignedBigInteger('recipient_user_id'); // the merchant/admin the thread belongs to
             $table->unsignedBigInteger('sender_user_id');
-            $table->string('sender_role'); // MERCHANT | ADMIN | SUPER
+            $table->string('sender_role', 20); // MERCHANT | ADMIN | SUPER
             $table->string('subject')->nullable();
             $table->longText('body');
             $table->unsignedBigInteger('parent_message_id')->nullable();
-            $table->string('status')->default('OPEN'); // OPEN | RESOLVED
+            $table->string('status', 20)->default('OPEN'); // OPEN | RESOLVED
             $table->timestamps();
 
             $table->index('payout_id');

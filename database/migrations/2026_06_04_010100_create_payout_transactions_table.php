@@ -16,7 +16,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('payout_id');
             $table->unsignedBigInteger('transaction_id');
-            $table->string('source_type'); // PAYMENT | MERCHANT_CHARGE
+            $table->string('source_type', 30); // PAYMENT | MERCHANT_CHARGE
             $table->decimal('amount', 15, 2); // amount the recipient is being credited for this transaction
             $table->timestamps();
 
