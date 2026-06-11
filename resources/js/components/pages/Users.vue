@@ -21,33 +21,43 @@
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody v-if="!loading">
+          <tbody v-if="!loading && users.length">
             <tr v-for="user in users" :key="user.id">
               <td>#{{ user.id }}</td>
-              <td>{{ user.fullName }}</td>
+              <td>{{ fullName(user) || '—' }}</td>
               <td>{{ user.email }}</td>
               <td>
-                <span :class="['role-badge', user.role.toLowerCase()]">
+                <span :class="['role-badge', (user.role || '').toLowerCase()]">
                   {{ user.role }}
                 </span>
               </td>
               <td>
-                <span :class="['status-badge', user.status ? 'active' : 'inactive']">
-                  {{ user.status ? 'Active' : 'Inactive' }}
+                <span :class="['status-badge', isActive(user) ? 'active' : 'inactive']">
+                  {{ isActive(user) ? 'Active' : 'Inactive' }}
                 </span>
               </td>
               <td class="actions">
-                <button class="btn-icon" @click="editUser(user)" title="Edit">
-                  <i class="ri-edit-line"></i>
-                </button>
-                <button class="btn-icon" @click="getUserSecret(user.id)" title="View Secret">
-                  <i class="ri-key-line"></i>
-                </button>
-                <button class="btn-icon delete" @click="confirmDelete(user)" title="Delete">
-                  <i class="ri-delete-bin-line"></i>
-                </button>
+                <div class="action-buttons">
+                  <button class="btn-icon" @click="editUser(user)" title="Edit">
+                    <i class="ri-edit-line"></i>
+                  </button>
+                  <button class="btn-icon" @click="getUserSecret(user.id)" title="View Secret">
+                    <i class="ri-key-line"></i>
+                  </button>
+                  <button
+                    class="btn-icon delete"
+                    :disabled="user.id === currentUserId"
+                    :title="user.id === currentUserId ? 'You can\'t delete yourself' : 'Delete'"
+                    @click="confirmDelete(user)"
+                  >
+                    <i class="ri-delete-bin-line"></i>
+                  </button>
+                </div>
               </td>
             </tr>
+          </tbody>
+          <tbody v-else-if="!loading">
+            <tr><td colspan="6" class="text-center empty-state">No users found.</td></tr>
           </tbody>
           <tbody v-else>
             <tr>
@@ -106,9 +116,12 @@
               </div>
             </div>
             <div class="form-actions">
-              <button type="button" class="btn-secondary" @click="closeModal">Cancel</button>
-              <button type="submit" class="btn-primary">
-                {{ editingUser ? 'Update' : 'Create' }} User
+              <button type="button" class="btn-secondary" :disabled="submitting" @click="closeModal">Cancel</button>
+              <button type="submit" class="btn-primary" :disabled="submitting">
+                <i v-if="submitting" class="ri-loader-4-line spin"></i>
+                {{ submitting
+                    ? (editingUser ? 'Updating...' : 'Creating...')
+                    : (editingUser ? 'Update User' : 'Create User') }}
               </button>
             </div>
           </form>
@@ -127,6 +140,8 @@ export default {
     return {
       users: [],
       loading: false,
+      submitting: false,
+      currentUserId: null,
       showAddUserModal: false,
       editingUser: null,
       userForm: {
@@ -140,9 +155,23 @@ export default {
     };
   },
   mounted() {
+    try {
+      const u = JSON.parse(localStorage.getItem('user') || '{}');
+      this.currentUserId = u.user_id || null;
+    } catch (e) {}
     this.loadUsers();
   },
   methods: {
+    fullName(user) {
+      if (!user) return '';
+      return [user.first_name, user.last_name].filter(Boolean).join(' ');
+    },
+    isActive(user) {
+      // is_activated on the DB (snake_case). The status form field is a UI alias.
+      if (typeof user?.is_activated === 'boolean') return user.is_activated;
+      if (typeof user?.is_activated === 'number') return user.is_activated === 1;
+      return !!user?.status;
+    },
     async loadUsers() {
       this.loading = true;
       try {
@@ -158,29 +187,36 @@ export default {
     },
 
     async handleSubmit() {
+      if (this.submitting) return;
+      this.submitting = true;
       try {
         if (this.editingUser) {
           await axios.put(`/api/v1/admin/users/${this.editingUser.id}`, this.userForm);
-          this.$swal.fire('Success!', 'User updated successfully', 'success');
         } else {
           await axios.post('/api/v1/admin/secondary-admin-sign-up', this.userForm);
-          this.$swal.fire('Success!', 'User created successfully', 'success');
         }
+        await this.loadUsers();
         this.closeModal();
-        this.loadUsers();
+        this.$swal.fire(
+          'Success!',
+          this.editingUser ? 'User updated successfully' : 'User created successfully',
+          'success'
+        );
       } catch (error) {
         this.$swal.fire('Error!', error.response?.data?.message || 'Operation failed', 'error');
+      } finally {
+        this.submitting = false;
       }
     },
 
     editUser(user) {
       this.editingUser = user;
       this.userForm = {
-        fullName: user.fullName,
+        fullName: this.fullName(user),
         email: user.email,
         role: user.role,
-        status: user.status,
-        notes: user.notes || '',
+        status: this.isActive(user),
+        notes: user.description || user.notes || '',
         password: ''
       };
       this.showAddUserModal = true;
@@ -564,4 +600,56 @@ tbody tr:hover td {
     margin: 1rem;
   }
 }
+
+table td { vertical-align: middle; }
+td.actions { vertical-align: middle; white-space: nowrap; }
+td.actions .action-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+td.actions .btn-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #475569;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+td.actions .btn-icon:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #cbd5e1;
+}
+td.actions .btn-icon.delete {
+  color: #dc2626;
+  border-color: #fecaca;
+}
+td.actions .btn-icon.delete:hover { background: #fef2f2; }
+td.actions .btn-icon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.empty-state { color: #94a3b8; padding: 30px 0; }
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none !important;
+}
+.btn-primary .spin,
+.btn-secondary .spin {
+  display: inline-block;
+  margin-right: 6px;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

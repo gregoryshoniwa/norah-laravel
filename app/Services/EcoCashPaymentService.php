@@ -88,7 +88,10 @@ class EcoCashPaymentService
         // Transform the incoming request to match the API's required format
         $apiRequest = [
             "clientCorrelator" => $reference, // Generate a random unique correlator
-            "notifyUrl" => $user->web_service_url, // Use notifyUrl from request or default to app URL
+            // notifyUrl is OUR gateway endpoint - EcoCash will POST their raw
+            // provider JSON here. The merchant's web_service_url is for our
+            // wrapped sendStatusWebhook only and must not be exposed to EcoCash.
+            "notifyUrl" => url('/payment/ecocash/notify'),
             "referenceCode" => $reference, // Generate a random reference code
             "tranType" => "MER",
             "endUserId" => $request['phoneNumber'], // Map phoneNumber from the frontend request

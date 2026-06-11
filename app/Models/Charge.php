@@ -25,6 +25,7 @@ class Charge extends Model
         'min_threshold',
         'max_threshold',
         'pl_account',
+        'merchant_user_id',
         'merchant_user_name',
         'deleted',
     ];
@@ -37,15 +38,12 @@ class Charge extends Model
         return $query->where('deleted', false);
     }
 
-    public function merchant()
+    /**
+     * The primary link is to the merchant's User row. The Merchant business
+     * record can be reached via that user's hasOne relationship.
+     */
+    public function merchantUser()
     {
-        return $this->hasOneThrough(
-            Merchant::class,
-            User::class,
-            'email',        // Foreign key on the users table (email)
-            'user_id',      // Foreign key on the merchants table (user_id)
-            'merchant_user_name', // Local key on the charges table (merchant_user_name)
-            'id'            // Local key on the users table (id)
-        );
+        return $this->belongsTo(User::class, 'merchant_user_id');
     }
 }

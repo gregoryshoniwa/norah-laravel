@@ -36,6 +36,11 @@ class User extends Authenticatable implements JWTSubject
         'user_secret',
         'return_url',
         'web_service_url',
+        'bank_name',
+        'bank_branch',
+        'bank_account_name',
+        'bank_account_number',
+        'bank_swift_code',
     ];
 
     /**

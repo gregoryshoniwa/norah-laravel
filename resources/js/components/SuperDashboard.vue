@@ -21,6 +21,9 @@
         <router-link :to="{ name: 'super-transactions' }" class="nav-item" active-class="active">
           <i class="ri-exchange-dollar-line"></i> Transactions
         </router-link>
+        <router-link :to="{ name: 'super-payouts' }" class="nav-item" active-class="active">
+          <i class="ri-bank-line"></i> Payouts
+        </router-link>
         <button @click="handleLogout" class="nav-item logout">
           <i class="ri-logout-box-line"></i> Logout
         </button>

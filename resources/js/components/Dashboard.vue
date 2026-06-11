@@ -27,6 +27,10 @@
           <i class="ri-money-cny-circle-line"></i>
           Charges
         </router-link>
+        <router-link :to="{ name: 'payouts' }" class="nav-item" active-class="active">
+          <i class="ri-bank-line"></i>
+          Payouts
+        </router-link>
         <router-link :to="{ name: 'settings' }" class="nav-item" active-class="active">
           <i class="ri-settings-3-line"></i>
           Settings

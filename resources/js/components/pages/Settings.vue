@@ -98,6 +98,84 @@
         </button>
       </div>
     </div>
+
+    <!-- Company / integration settings -->
+    <div class="content-card">
+      <div class="settings-section full-width">
+        <h3 class="settings-title">
+          <i class="ri-building-line"></i>
+          Company &amp; Integration
+        </h3>
+        <p class="settings-help">These are sent on transaction redirects and webhooks. Update once - changes apply to all future transactions.</p>
+        <div class="settings-content company-grid">
+          <div class="form-group">
+            <label>Company name</label>
+            <input v-model="profile.company_name" type="text" maxlength="255" />
+          </div>
+          <div class="form-group">
+            <label>Return URL</label>
+            <input v-model="profile.return_url" type="url" placeholder="https://yourapp.com/payment/return" maxlength="500" />
+          </div>
+          <div class="form-group">
+            <label>Webhook URL</label>
+            <input v-model="profile.web_service_url" type="url" placeholder="https://yourapp.com/webhooks/norah" maxlength="500" />
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button class="btn-primary" :disabled="savingProfile" @click="saveProfile">
+            <i class="ri-save-line"></i>
+            {{ savingProfile ? 'Saving...' : 'Save company settings' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bank for payouts -->
+    <div class="content-card">
+      <div class="settings-section full-width">
+        <h3 class="settings-title">
+          <i class="ri-bank-line"></i>
+          Bank account for payouts
+        </h3>
+        <p class="settings-help">
+          The gateway uses these to send your payouts. <strong>Payouts cannot be created until bank, account name, and account number are filled in.</strong>
+        </p>
+
+        <div v-if="profile.id && !profile.bank_complete" class="bank-warning">
+          <i class="ri-error-warning-line"></i>
+          Bank details are incomplete. Payouts to you are currently blocked.
+        </div>
+
+        <div class="settings-content company-grid">
+          <div class="form-group">
+            <label>Bank name *</label>
+            <input v-model="profile.bank_name" type="text" maxlength="120" placeholder="e.g. CBZ Bank" />
+          </div>
+          <div class="form-group">
+            <label>Branch</label>
+            <input v-model="profile.bank_branch" type="text" maxlength="120" />
+          </div>
+          <div class="form-group">
+            <label>Account name *</label>
+            <input v-model="profile.bank_account_name" type="text" maxlength="120" />
+          </div>
+          <div class="form-group">
+            <label>Account number *</label>
+            <input v-model="profile.bank_account_number" type="text" maxlength="50" />
+          </div>
+          <div class="form-group">
+            <label>SWIFT / BIC (optional)</label>
+            <input v-model="profile.bank_swift_code" type="text" maxlength="20" />
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button class="btn-primary" :disabled="savingBank" @click="saveBank">
+            <i class="ri-save-line"></i>
+            {{ savingBank ? 'Saving...' : 'Save bank details' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -126,11 +204,26 @@ export default {
         sessionTimeout: 30,
         apiRateLimit: 100,
         enableApiLogs: true
-      }
+      },
+      profile: {
+        id: null,
+        company_name: '',
+        return_url: '',
+        web_service_url: '',
+        bank_name: '',
+        bank_branch: '',
+        bank_account_name: '',
+        bank_account_number: '',
+        bank_swift_code: '',
+        bank_complete: false,
+      },
+      savingProfile: false,
+      savingBank: false,
     }
   },
   mounted() {
     this.loadSettings();
+    this.loadProfile();
   },
   methods: {
     async loadSettings() {
@@ -225,7 +318,54 @@ export default {
           this.$swal.fire('Reset!', 'Settings have been reset to defaults', 'success');
         }
       });
-    }
+    },
+
+    async loadProfile() {
+      try {
+        const { data } = await axios.get('/api/v1/profile');
+        if (data.success) this.profile = { ...this.profile, ...data.data };
+      } catch (e) {
+        console.error('Error loading profile', e);
+      }
+    },
+
+    async saveProfile() {
+      this.savingProfile = true;
+      try {
+        const payload = {
+          company_name: this.profile.company_name || null,
+          return_url: this.profile.return_url || null,
+          web_service_url: this.profile.web_service_url || null,
+        };
+        const { data } = await axios.put('/api/v1/profile', payload);
+        if (data.success) this.profile = { ...this.profile, ...data.data };
+        this.$swal.fire('Saved', 'Company settings updated.', 'success');
+      } catch (e) {
+        this.$swal.fire('Error', e.response?.data?.message || 'Failed to save.', 'error');
+      } finally {
+        this.savingProfile = false;
+      }
+    },
+
+    async saveBank() {
+      this.savingBank = true;
+      try {
+        const payload = {
+          bank_name: this.profile.bank_name || null,
+          bank_branch: this.profile.bank_branch || null,
+          bank_account_name: this.profile.bank_account_name || null,
+          bank_account_number: this.profile.bank_account_number || null,
+          bank_swift_code: this.profile.bank_swift_code || null,
+        };
+        const { data } = await axios.put('/api/v1/profile/bank', payload);
+        if (data.success) this.profile = { ...this.profile, ...data.data };
+        this.$swal.fire('Saved', this.profile.bank_complete ? 'Bank details saved. Payouts can now be issued to you.' : 'Bank details saved (still incomplete).', 'success');
+      } catch (e) {
+        this.$swal.fire('Error', e.response?.data?.message || 'Failed to save.', 'error');
+      } finally {
+        this.savingBank = false;
+      }
+    },
   }
 }
 </script>
@@ -238,8 +378,29 @@ export default {
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 2rem;
-  margin-bottom: 2rem;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  margin-bottom: 0;
+}
+
+/* The System Settings parent card: only this card has settings-actions as a
+   direct child of content-card (the Company/Bank cards put theirs inside the
+   inner section). Style that direct-child footer to match the rest. */
+.content-card > .settings-actions {
+  padding: 1.1rem 1.5rem;
+  margin: 0;
+  border-top: 1px solid #eef2f7;
+  background: #fafbfd;
+}
+
+/* The four sub-cards inside the grid - lighter, no hover lift */
+.settings-grid .settings-section {
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.settings-grid .settings-section:hover {
+  transform: none;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
 .settings-section {
@@ -376,4 +537,100 @@ export default {
     gap: 1rem;
   }
 }
+
+/* Stand-alone settings cards (Company & Bank). Each one is its own
+   content-card so they stack with breathing room between them. */
+.settings-container .content-card + .content-card { margin-top: 2rem; }
+.settings-container .content-card {
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.05);
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  background: white;
+}
+
+.settings-section.full-width {
+  width: 100%;
+  background: white;
+  box-shadow: none;
+  border-radius: 0;
+}
+.settings-section.full-width:hover { transform: none; box-shadow: none; }
+
+.settings-section.full-width .settings-title {
+  background: linear-gradient(180deg, #fbfcfe, #f4f6fb);
+  border-bottom: 1px solid #e2e8f0;
+  padding: 1.1rem 1.5rem;
+}
+
+.settings-section.full-width .settings-actions {
+  padding: 1.1rem 1.5rem;
+  margin-top: 0;
+  border-top: 1px solid #eef2f7;
+  background: #fafbfd;
+}
+.settings-help {
+  margin: 1.5rem 1.5rem 0 1.5rem;
+  padding: 0.8rem 1rem;
+  background: #f8fafc;
+  border-left: 3px solid #6366f1;
+  color: #475569;
+  font-size: 0.88rem;
+  border-radius: 6px;
+}
+.settings-section.full-width .settings-content { padding: 1.5rem; }
+.settings-help strong { color: #1e293b; }
+
+/* Grid for company + bank fields - lives inside .settings-content so
+   it picks up its 1.5rem padding. Reset the form-group margin so the grid
+   gap is the single source of truth for spacing. */
+.company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+}
+.company-grid .form-group { margin-bottom: 0; }
+.company-grid .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #475569;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+.company-grid .form-group input[type="text"],
+.company-grid .form-group input[type="url"],
+.company-grid .form-group input[type="email"],
+.company-grid .form-group input {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: #f8f9fc;
+  color: #0f172a;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+.company-grid .form-group input:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  outline: none;
+  background: white;
+}
+.company-grid .form-group input::placeholder { color: #94a3b8; }
+
+.bank-warning {
+  margin: 1.25rem 1.5rem 0 1.5rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+.bank-warning i { font-size: 1.1rem; }
 </style>

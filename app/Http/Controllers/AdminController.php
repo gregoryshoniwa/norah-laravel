@@ -17,19 +17,28 @@ class AdminController extends Controller
 {
     public function createMerchantAccount(Request $request)
     {
-        // Validate the request
-        $request->validate([
-            'merchantName' => 'required|string|max:255',
-            'merchantAddress' => 'required|string|max:255',
-            'merchantPhone' => 'required|string|max:255',
-            'merchantEmail' => 'required|string|email|max:255|unique:merchants,merchant_email',
-            'merchantCountry' => 'required|string|max:255',
-            'merchantCity' => 'required|string|max:255',
-            'merchantWebsite' => 'nullable|string|max:255',
-            'merchantDescription' => 'nullable|string',
-            'returnUrl' => 'nullable|string|max:255',
-            'webServiceUrl' => 'nullable|string|max:255',
+        // Accept the snake_case shape the form actually sends. The merchant's
+        // company_name is no longer in the form - it is always inherited from
+        // the parent admin so the ownership label never drifts.
+        $validator = Validator::make($request->all(), [
+            'merchant_name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:merchants,merchant_email',
+            'return_url' => 'required|string|max:255',
+            'web_service_url' => 'nullable|string|max:255',
+            'merchant_description' => 'nullable|string',
+            'merchant_address' => 'nullable|string|max:255',
+            'merchant_phone' => 'nullable|string|max:255',
+            'merchant_country' => 'nullable|string|max:255',
+            'merchant_city' => 'nullable|string|max:255',
+            'merchant_website' => 'nullable|string|max:255',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
         // Get the authenticated user
         $adminUser = JWTAuth::user();
@@ -46,31 +55,34 @@ class AdminController extends Controller
 
         // Create a new user for the merchant
         $merchantUser = User::create([
-            'first_name' => $request->merchantName,
+            'first_name' => $request->merchant_name,
             'last_name' => 'Merchant Transaction API',
-            'email' => $merchantEmail, // Generate a unique email
+            'email' => $merchantEmail, // Generate a unique internal email
             'password' => Hash::make($merchantSecret),
             'role' => 'MERCHANT',
             'is_activated' => true,
+            // Always inherit the company label from the parent admin.
             'company_name' => $adminUser->company_name,
             'primary_user' => $adminUser->id,
+            'return_url' => $request->return_url,
+            'web_service_url' => $request->web_service_url,
         ]);
 
         // Create the merchant account
         $merchant = Merchant::create([
-            'merchant_name' => $request->merchantName,
-            'merchant_address' => $request->merchantAddress,
-            'merchant_phone' => $request->merchantPhone,
-            'merchant_email' => $request->merchantEmail,
+            'merchant_name' => $request->merchant_name,
+            'merchant_address' => $request->merchant_address,
+            'merchant_phone' => $request->merchant_phone,
+            'merchant_email' => $request->email,
             'merchant_secret' => $merchantSecret,
             'merchant_uid' => $merchantUid,
             'merchant_status' => 'DEVELOPMENT',
-            'merchant_country' => $request->merchantCountry,
-            'merchant_city' => $request->merchantCity,
-            'merchant_website' => $request->merchantWebsite,
-            'merchant_description' => $request->merchantDescription,
-            'return_url' => $request->returnUrl,
-            'web_service_url' => $request->webServiceUrl,
+            'merchant_country' => $request->merchant_country,
+            'merchant_city' => $request->merchant_city,
+            'merchant_website' => $request->merchant_website,
+            'merchant_description' => $request->merchant_description,
+            'return_url' => $request->return_url,
+            'web_service_url' => $request->web_service_url,
             'user_id' => $merchantUser->id,
         ]);
 
@@ -163,19 +175,27 @@ class AdminController extends Controller
             return response()->json(['message' => 'Unauthorized. Only ADMIN users can view merchants.'], 403);
         }
 
-        // Retrieve merchants belonging to the authenticated user's company
-        $merchants = Merchant::whereHas('user', function ($query) use ($authenticatedUser) {
-            $query->where('company_name', $authenticatedUser->company_name);
-        })->get();
-
-        if ($merchants->isEmpty()) {
-            return response()->json(['message' => 'No merchants found for your company.'], 404);
-        }
+        // Retrieve merchants belonging to this admin. We match on the
+        // primary_user ownership link rather than company_name - the latter
+        // is just a label the admin can change on the merchant form, so a
+        // mismatch caused new merchants to silently drop out of the list.
+        // Eager-load user so company_name shows in the table.
+        $merchants = Merchant::with('user:id,company_name,email,role')
+            ->whereHas('user', function ($query) use ($authenticatedUser) {
+                $query->where('primary_user', $authenticatedUser->id);
+            })
+            ->get();
 
         // Exclude the merchant_secret field from the response
         $merchants->makeHidden(['merchant_secret']);
 
-        return response()->json($merchants, 200);
+        // Return the shape the front-end expects ({ success, data }).
+        // An empty collection is a valid "you have no merchants yet" state,
+        // not a 404 - the UI should show an empty table, not throw an error.
+        return response()->json([
+            'success' => true,
+            'data' => $merchants,
+        ], 200);
     }
 
     public function inactivateMerchant($merchantId)
@@ -193,7 +213,7 @@ class AdminController extends Controller
         }
 
         // Ensure the merchant belongs to the same company as the authenticated ADMIN user
-        if (!$merchant->user || $merchant->user->company_name !== $authenticatedUser->company_name) {
+        if (!$merchant->user || (int) $merchant->user->primary_user !== (int) $authenticatedUser->id) {
             return response()->json(['message' => 'Unauthorized. The specified merchant does not belong to your company.'], 403);
         }
 
@@ -206,7 +226,7 @@ class AdminController extends Controller
             $user->update(['is_activated' => false]);
         }
 
-        return response()->json(['message' => 'Merchant inactivated successfully.'], 200);
+        return response()->json(['success' => true, 'message' => 'Merchant inactivated successfully.'], 200);
     }
 
     public function activateMerchant($merchantId)
@@ -224,7 +244,7 @@ class AdminController extends Controller
         }
 
         // Ensure the merchant belongs to the same company as the authenticated ADMIN user
-        if (!$merchant->user || $merchant->user->company_name !== $authenticatedUser->company_name) {
+        if (!$merchant->user || (int) $merchant->user->primary_user !== (int) $authenticatedUser->id) {
             return response()->json(['message' => 'Unauthorized. The specified merchant does not belong to your company.'], 403);
         }
 
@@ -237,7 +257,7 @@ class AdminController extends Controller
             $user->update(['is_activated' => true]);
         }
 
-        return response()->json(['message' => 'Merchant activated successfully.'], 200);
+        return response()->json(['success' => true, 'message' => 'Merchant activated successfully.'], 200);
     }
 
 
@@ -256,7 +276,7 @@ class AdminController extends Controller
         }
 
         // Ensure the merchant belongs to the same company as the authenticated ADMIN user
-        if (!$merchant->user || $merchant->user->company_name !== $authenticatedUser->company_name) {
+        if (!$merchant->user || (int) $merchant->user->primary_user !== (int) $authenticatedUser->id) {
             return response()->json(['message' => 'Unauthorized. The specified merchant does not belong to your company.'], 403);
         }
 
@@ -281,8 +301,9 @@ class AdminController extends Controller
             return response()->json(['message' => 'User not found.'], 404);
         }
 
-        // Ensure the user belongs to the same company as the authenticated ADMIN user
-        if ($user->company_name !== $authenticatedUser->company_name) {
+        // Admin can act on themselves or on users whose primary_user is the admin.
+        if ((int) $user->id !== (int) $authenticatedUser->id
+            && (int) $user->primary_user !== (int) $authenticatedUser->id) {
             return response()->json(['message' => 'Unauthorized. The specified user does not belong to your company.'], 403);
         }
 
@@ -301,18 +322,19 @@ class AdminController extends Controller
             return response()->json(['message' => 'Unauthorized. Only ADMIN users can view non-merchant users.'], 403);
         }
 
-        // Retrieve all non-MERCHANT users in the authenticated user's company
-        $users = User::where('company_name', $authenticatedUser->company_name)
-            ->where('role', '!=', 'MERCHANT')
-            ->get();
-
-        if ($users->isEmpty()) {
-            return response()->json(['message' => 'No non-MERCHANT users found for your company.'], 404);
-        }
+        // The admin sees themselves + any non-MERCHANT users whose primary_user
+        // points at them. Company_name is just a label and would silently drop
+        // self-created secondary admins if it ever drifted - use the FK link.
+        $users = User::where('role', '!=', 'MERCHANT')
+            ->where(function ($q) use ($authenticatedUser) {
+                $q->where('id', $authenticatedUser->id)
+                  ->orWhere('primary_user', $authenticatedUser->id);
+            })
+            ->get(['id', 'first_name', 'last_name', 'email', 'role', 'is_activated', 'primary_user', 'description']);
 
         return response()->json([
             'success' => true,
-            'data' => $users
+            'data' => $users,
         ], 200);
     }
 
@@ -330,8 +352,9 @@ class AdminController extends Controller
             return response()->json(['message' => 'User not found.'], 404);
         }
 
-        // Ensure the user belongs to the same company as the authenticated ADMIN user
-        if ($user->company_name !== $authenticatedUser->company_name) {
+        // Admin can act on themselves or on users whose primary_user is the admin.
+        if ((int) $user->id !== (int) $authenticatedUser->id
+            && (int) $user->primary_user !== (int) $authenticatedUser->id) {
             return response()->json(['message' => 'Unauthorized. The specified user does not belong to your company.'], 403);
         }
 
@@ -386,8 +409,9 @@ class AdminController extends Controller
             return response()->json(['message' => 'User not found.'], 404);
         }
 
-        // Ensure the user belongs to the same company as the authenticated ADMIN user
-        if ($user->company_name !== $authenticatedUser->company_name) {
+        // Admin can act on themselves or on users whose primary_user is the admin.
+        if ((int) $user->id !== (int) $authenticatedUser->id
+            && (int) $user->primary_user !== (int) $authenticatedUser->id) {
             return response()->json(['message' => 'Unauthorized. The specified user does not belong to your company.'], 403);
         }
 

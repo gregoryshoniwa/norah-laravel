@@ -16,6 +16,10 @@ Route::get('/payment/callback', [\App\Http\Controllers\TransactionController::cl
 // iVeri (VISA/MasterCard) 3D Secure callback - rendered inside the popup.
 Route::match(['get', 'post'], '/payment/iveri/callback', [\App\Http\Controllers\TransactionController::class, 'handleIveriCallback'])->name('payment.iveri.callback');
 
+// EcoCash provider-side notify - they post their raw payload here, NOT to the
+// merchant's webhook URL. The merchant only gets our wrapped sendStatusWebhook.
+Route::match(['get', 'post'], '/payment/ecocash/notify', [\App\Http\Controllers\TransactionController::class, 'handleEcocashNotify'])->name('payment.ecocash.notify');
+
 // Payment result pages
 Route::get('/payment/success', function () {
     $reference = request('reference');

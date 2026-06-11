@@ -22,31 +22,33 @@
             </tr>
           </thead>
           <tbody v-if="!loading">
-            <tr v-for="merchant in merchants" :key="merchant.id">
-              <td>#{{ merchant.id }}</td>
+            <tr v-for="merchant in merchants" :key="merchant.merchant_id">
+              <td>#{{ merchant.merchant_id }}</td>
               <td>{{ merchant.merchant_name }}</td>
-              <td>{{ merchant.email }}</td>
-              <td>{{ merchant.company_name }}</td>
+              <td>{{ merchant.merchant_email || '—' }}</td>
+              <td>{{ merchant.user?.company_name || '—' }}</td>
               <td>
-                <span :class="['status-badge', merchant.status ? 'active' : 'inactive']">
-                  {{ merchant.status ? 'Active' : 'Inactive' }}
+                <span :class="['status-badge', isActive(merchant) ? 'active' : 'inactive']">
+                  {{ isActive(merchant) ? 'Active' : 'Inactive' }}
                 </span>
               </td>
               <td class="actions">
-                <button class="btn-icon" @click="editMerchant(merchant)" title="Edit">
-                  <i class="ri-edit-line"></i>
-                </button>
-                <button class="btn-icon" @click="getMerchantSecret(merchant.id)" title="View Secret">
-                  <i class="ri-key-line"></i>
-                </button>
-                <button
-                  class="btn-icon"
-                  :class="merchant.status ? 'warning' : 'success'"
-                  @click="toggleMerchantStatus(merchant)"
-                  :title="merchant.status ? 'Deactivate' : 'Activate'"
-                >
-                  <i :class="merchant.status ? 'ri-pause-circle-line' : 'ri-play-circle-line'"></i>
-                </button>
+                <div class="action-buttons">
+                  <button class="btn-icon" @click="editMerchant(merchant)" title="Edit">
+                    <i class="ri-edit-line"></i>
+                  </button>
+                  <button class="btn-icon" @click="getMerchantSecret(merchant.merchant_id)" title="View Secret">
+                    <i class="ri-key-line"></i>
+                  </button>
+                  <button
+                    class="btn-icon"
+                    :class="isActive(merchant) ? 'warning' : 'success'"
+                    @click="toggleMerchantStatus(merchant)"
+                    :title="isActive(merchant) ? 'Deactivate' : 'Activate'"
+                  >
+                    <i :class="isActive(merchant) ? 'ri-pause-circle-line' : 'ri-play-circle-line'"></i>
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -80,15 +82,15 @@
                   <label>Email</label>
                   <input v-model="merchantForm.email" type="email" required />
                 </div>
-                <div class="form-group">
-                  <label>Company Name</label>
-                  <input v-model="merchantForm.company_name" type="text" required />
-                </div>
               </div>
               <div class="form-column">
                 <div class="form-group">
                   <label>Return URL</label>
                   <input v-model="merchantForm.return_url" type="url" required />
+                </div>
+                <div class="form-group">
+                  <label>Webhook URL (optional)</label>
+                  <input v-model="merchantForm.web_service_url" type="url" placeholder="https://..." />
                 </div>
                 <div class="form-group" v-if="!editingMerchant">
                   <label>Password</label>
@@ -101,9 +103,12 @@
               </div>
             </div>
             <div class="form-actions">
-              <button type="button" class="btn-secondary" @click="closeModal">Cancel</button>
-              <button type="submit" class="btn-primary">
-                {{ editingMerchant ? 'Update' : 'Create' }} Merchant
+              <button type="button" class="btn-secondary" :disabled="submitting" @click="closeModal">Cancel</button>
+              <button type="submit" class="btn-primary" :disabled="submitting">
+                <i v-if="submitting" class="ri-loader-4-line spin"></i>
+                {{ submitting
+                    ? (editingMerchant ? 'Updating...' : 'Creating...')
+                    : (editingMerchant ? 'Update Merchant' : 'Create Merchant') }}
               </button>
             </div>
           </form>
@@ -122,14 +127,15 @@ export default {
     return {
       merchants: [],
       loading: false,
+      submitting: false,
       showAddMerchantModal: false,
       editingMerchant: null,
       merchantForm: {
         merchant_name: '',
         email: '',
-        company_name: '',
         merchant_description: '',
         return_url: '',
+        web_service_url: '',
         password: ''
       }
     };
@@ -153,18 +159,27 @@ export default {
     },
 
     async handleSubmit() {
+      if (this.submitting) return;
+      this.submitting = true;
       try {
         if (this.editingMerchant) {
-          await axios.put(`/api/v1/admin/merchants/${this.editingMerchant.id}`, this.merchantForm);
-          this.$swal.fire('Success!', 'Merchant updated successfully', 'success');
+          await axios.put(`/api/v1/admin/merchants/${this.editingMerchant.merchant_id}`, this.merchantForm);
         } else {
           await axios.post('/api/v1/admin/create-merchant-account', this.merchantForm);
-          this.$swal.fire('Success!', 'Merchant created successfully', 'success');
         }
+        // Refresh list BEFORE closing the modal so the new row is in the
+        // table by the time the user clicks OK on the success toast.
+        await this.loadMerchants();
         this.closeModal();
-        this.loadMerchants();
+        this.$swal.fire(
+          'Success!',
+          this.editingMerchant ? 'Merchant updated successfully' : 'Merchant created successfully',
+          'success'
+        );
       } catch (error) {
         this.$swal.fire('Error!', error.response?.data?.message || 'Operation failed', 'error');
+      } finally {
+        this.submitting = false;
       }
     },
 
@@ -173,9 +188,9 @@ export default {
       this.merchantForm = {
         merchant_name: merchant.merchant_name,
         email: merchant.merchant_email,
-        company_name: merchant.company_name,
         merchant_description: merchant.merchant_description || '',
         return_url: merchant.return_url || '',
+        web_service_url: merchant.web_service_url || '',
         password: ''
       };
       this.showAddMerchantModal = true;
@@ -208,36 +223,39 @@ export default {
       }
     },
 
+    isActive(merchant) {
+      return (merchant?.merchant_status || '').toUpperCase() === 'ACTIVE';
+    },
     async toggleMerchantStatus(merchant) {
       try {
-        const isActive = merchant.status;
-        const action = isActive ? 'inactivate' : 'activate';
+        const active = this.isActive(merchant);
+        const action = active ? 'inactivate' : 'activate';
         const confirmResult = await this.$swal.fire({
-          title: `${isActive ? 'Deactivate' : 'Activate'} Merchant?`,
-          text: `Are you sure you want to ${isActive ? 'deactivate' : 'activate'} ${merchant.merchant_name}?`,
+          title: `${active ? 'Deactivate' : 'Activate'} Merchant?`,
+          text: `Are you sure you want to ${active ? 'deactivate' : 'activate'} ${merchant.merchant_name}?`,
           icon: 'warning',
           showCancelButton: true,
-          confirmButtonColor: isActive ? '#d33' : '#3085d6',
+          confirmButtonColor: active ? '#d33' : '#3085d6',
           cancelButtonColor: '#6c757d',
           confirmButtonText: `Yes, ${action} merchant`
         });
 
         if (confirmResult.isConfirmed) {
-          const response = await axios.put(`/api/v1/admin/merchants/${merchant.id}/${action}`);
+          const response = await axios.put(`/api/v1/admin/merchants/${merchant.merchant_id}/${action}`);
 
           if (response.data.success) {
+            await this.loadMerchants();
             this.$swal.fire(
               'Success!',
-              `Merchant ${isActive ? 'deactivated' : 'activated'} successfully`,
+              `Merchant ${active ? 'deactivated' : 'activated'} successfully`,
               'success'
             );
-            this.loadMerchants(); // Reload the merchants list
           } else {
             this.$swal.fire('Error!', response.data.message || 'Operation failed', 'error');
           }
         }
       } catch (error) {
-        console.error(`Error ${merchant.status ? 'deactivating' : 'activating'} merchant:`, error);
+        console.error(`Error toggling merchant status:`, error);
         this.$swal.fire('Error!', error.response?.data?.message || 'Operation failed', 'error');
       }
     },
@@ -248,9 +266,9 @@ export default {
       this.merchantForm = {
         merchant_name: '',
         email: '',
-        company_name: '',
         merchant_description: '',
         return_url: '',
+        web_service_url: '',
         password: ''
       };
     }
@@ -536,5 +554,61 @@ tbody tr:hover td {
     width: 95%;
     margin: 1rem;
   }
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Roomier action icon column. The flex container lives INSIDE the td so the
+   table cell keeps its normal vertical sizing and the row bottom border
+   stays at a consistent height. */
+td.actions { vertical-align: middle; white-space: nowrap; }
+td.actions .action-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+td.actions .btn-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+td.actions .btn-icon:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #cbd5e1;
+}
+td.actions .btn-icon.success {
+  color: #16a34a;
+  border-color: #bbf7d0;
+}
+td.actions .btn-icon.success:hover { background: #f0fdf4; }
+td.actions .btn-icon.warning {
+  color: #d97706;
+  border-color: #fde68a;
+}
+td.actions .btn-icon.warning:hover { background: #fffbeb; }
+table td { vertical-align: middle; }
+.btn-primary .spin,
+.btn-secondary .spin {
+  display: inline-block;
+  margin-right: 6px;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

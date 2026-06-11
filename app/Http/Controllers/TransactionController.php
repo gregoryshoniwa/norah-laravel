@@ -199,17 +199,11 @@ class TransactionController extends Controller
                 }
             }
 
-            // Handle payment errors for Omari or Zimswitch
+            // Handle payment errors for Omari or Zimswitch. Route through
+            // handleFailedTransaction so the merchant webhook fires with the
+            // same shape (and customer_reference) as every other failure.
             if (($paymentMethod === 'OMARI' && isset($hasError) && $hasError) ||
                 ($paymentMethod === 'ZIMSWITCH' && isset($response['error']) && $response['error'] === true)) {
-
-                // Update transaction with failed status
-                $transaction->update([
-                    'status' => 'FAILED',
-                    'response_code' => $response['responseCode'] ?? '01',
-                    'error_message' => $response['message'] ?? 'Authorization failed',
-                    'type' => 'PAYMENT'
-                ]);
 
                 $this->audit([
                     'transaction_id' => $transaction->id,
@@ -227,15 +221,11 @@ class TransactionController extends Controller
                     ],
                 ]);
 
-                // Return error response
-                return response()->json([
-                    'success' => false,
-                    'status' => 'FAILED',
-                    'message' => $response['message'] ?? 'Authorization failed',
-                    'responseCode' => $response['responseCode'] ?? '01',
-                    'trace' => $transaction->trace,
-                    'returnUrl' => $returnUrl
-                ]);
+                return $this->handleFailedTransaction(
+                    $transaction,
+                    $response['message'] ?? 'Authorization failed',
+                    $response['responseCode'] ?? '01'
+                );
             }
 
             // Special response for Zimswitch integrated in Vue.js
@@ -430,33 +420,14 @@ class TransactionController extends Controller
                 $isFinal = $inquiryResponse['transactionOperationStatus'] === 'COMPLETED' ||
                            $inquiryResponse['transactionOperationStatus'] === 'FAILED';
             } elseif ($transaction->payment_method === 'VISA_MASTER') {
-                // For iVeri, check the payment status
+                // Ask iVeri what happened. Do NOT mutate the row inline -
+                // let the unified $isFinal block below route to either
+                // finalizeSuccessfulTransaction (creates the PAYMENT row +
+                // fires webhook) or handleFailedTransaction (marks FAILED +
+                // fires webhook). Inline mutation would skip both and also
+                // create duplicate rows when finalize runs afterwards.
                 $inquiryResponse = $this->iveriService->checkPaymentStatus($transaction->reference);
-
-                // Check if the payment has been finalized
-                $isFinal = isset($inquiryResponse['success']) &&
-                          ($inquiryResponse['success'] === true || $inquiryResponse['error'] === true);
-
-                // If payment was successful but transaction not yet updated
-                if ($inquiryResponse['success'] === true && $transaction->status !== 'COMPLETED') {
-                    $transaction->update([
-                        'status' => 'COMPLETED',
-                        'response' => json_encode($inquiryResponse),
-                        'response_code' => '000',
-                        'type' => 'PAYMENT'
-                    ]);
-                }
-
-                // If payment failed but transaction not yet updated
-                if ($inquiryResponse['error'] === true && $transaction->status !== 'FAILED') {
-                    $transaction->update([
-                        'status' => 'FAILED',
-                        'response' => json_encode($inquiryResponse),
-                        'response_code' => $inquiryResponse['data']['StatusCode'] ?? '001',
-                        'error_message' => $inquiryResponse['message'] ?? 'Payment failed',
-                        'type' => 'PAYMENT'
-                    ]);
-                }
+                $isFinal = !empty($inquiryResponse['success']) || !empty($inquiryResponse['error']);
             } elseif ($transaction->payment_method === 'ZIMSWITCH') {
                 // For ZimSwitch, transactions are handled via callbacks, not polling
                 // If we reach this point, it means the transaction is still pending
@@ -552,15 +523,21 @@ class TransactionController extends Controller
 
             // If we have a final status, update the transaction
             if ($isFinal) {
-                if (($transaction->payment_method === 'ECOCASH' &&
-                    $inquiryResponse['transactionOperationStatus'] === 'FAILED') ||
-                ($transaction->payment_method === 'OMARI' &&
-                    (isset($inquiryResponse['error']) && $inquiryResponse['error'] === true ||
-                     isset($inquiryResponse['status']) && $inquiryResponse['status'] === 'Failed'))) {
+                $ecocashFailed = $transaction->payment_method === 'ECOCASH'
+                    && ($inquiryResponse['transactionOperationStatus'] ?? null) === 'FAILED';
+                $omariFailed = $transaction->payment_method === 'OMARI'
+                    && (
+                        (isset($inquiryResponse['error']) && $inquiryResponse['error'] === true)
+                        || (isset($inquiryResponse['status']) && $inquiryResponse['status'] === 'Failed')
+                    );
+                $visaFailed = $transaction->payment_method === 'VISA_MASTER'
+                    && !empty($inquiryResponse['error']);
+
+                if ($ecocashFailed || $omariFailed || $visaFailed) {
                     return $this->handleFailedTransaction(
                         $transaction,
                         $inquiryResponse['responseMessage'] ?? $inquiryResponse['message'] ?? 'Transaction failed.',
-                        '01'
+                        $inquiryResponse['data']['StatusCode'] ?? '01'
                     );
                 }
 
@@ -671,20 +648,8 @@ class TransactionController extends Controller
             // Handle system and merchant charges as separate records
             $this->createChargeRecords($originalTransaction, $user);
 
-            // Send webhook notification if merchant has web service URL configured
-            if ($user->role === 'MERCHANT' && !empty($user->web_service_url)) {
-                $this->sendPostRequest($user->web_service_url, [
-                    'transaction' => $newTransaction->toArray(),
-                    'status' => 'COMPLETED',
-                    'timestamp' => now()->toIso8601String(),
-                    'trace' => $originalTransaction->trace,
-                    'amount' => $newTransaction->amount,
-                    'currency' => $newTransaction->currency,
-                    'payment_method' => $newTransaction->payment_method,
-                    'reference' => $newTransaction->reference,
-                    'merchant_uid' => $newTransaction->merchant_uid
-                ]);
-            }
+            // Send webhook notification (no-op if merchant has no web_service_url).
+            $this->sendStatusWebhook($newTransaction, 'COMPLETED');
 
             DB::commit();
 
@@ -819,10 +784,18 @@ class TransactionController extends Controller
             'parent_transaction_id' => $transaction->id,
         ]);
 
-        // Merchant charge logic - only for merchant users
+        // Merchant charge logic - only for merchant users. Lookup by
+        // merchant_user_id (FK on charges) which is the real link.
+        // Fall back to merchant_user_name email for any pre-FK rows.
         if ($transaction->user_type === 'M') {
             $merchantCharge = Charge::active()
-                ->where('merchant_user_name', $user->email)
+                ->where(function ($q) use ($user) {
+                    $q->where('merchant_user_id', $user->id)
+                      ->orWhere(function ($q2) use ($user) {
+                          $q2->whereNull('merchant_user_id')
+                             ->where('merchant_user_name', $user->email);
+                      });
+                })
                 ->where('charge_source', 'MERCHANT')
                 ->where('currency', $transaction->currency)
                 ->where('min_threshold', '<=', $transaction->amount)
@@ -955,6 +928,9 @@ class TransactionController extends Controller
                 'error_message' => $errorMessage ?? $message,
             ],
         ]);
+
+        // Notify the merchant of the decline (no-op if no web_service_url).
+        $this->sendStatusWebhook($transaction->fresh(), 'FAILED', $message);
 
         $user = $this->getUserFromTransaction($transaction);
 
@@ -1573,6 +1549,41 @@ class TransactionController extends Controller
         }
     }
 
+    /**
+     * Fire the merchant webhook with a consistent payload shape for both
+     * COMPLETED and FAILED outcomes. Resolves the merchant from the
+     * transaction and silently skips if no web_service_url is configured.
+     */
+    protected function sendStatusWebhook(Transaction $transaction, string $status, ?string $message = null): void
+    {
+        $user = $this->getUserFromTransaction($transaction);
+        // Both ADMIN (running their own checkouts) and MERCHANT can have
+        // a webhook URL. SUPER does not transact, so it is excluded.
+        if (!$user || !in_array($user->role, ['ADMIN', 'MERCHANT'], true) || empty($user->web_service_url)) {
+            return;
+        }
+
+        $payload = [
+            'transaction' => $transaction->toArray(),
+            'status' => $status,
+            'timestamp' => now()->toIso8601String(),
+            'trace' => $transaction->trace,
+            'amount' => $transaction->amount,
+            'currency' => $transaction->currency,
+            'payment_method' => $transaction->payment_method,
+            'reference' => $transaction->reference,
+            'customer_reference' => $transaction->customer_reference,
+            'merchant_uid' => $transaction->merchant_uid,
+        ];
+
+        if ($status === 'FAILED') {
+            $payload['response_code'] = $transaction->response_code;
+            $payload['error_message'] = $message ?? $transaction->error_message;
+        }
+
+        $this->sendPostRequest($user->web_service_url, $payload);
+    }
+
     protected function sendPostRequest($url, $data)
     {
         try {
@@ -1829,9 +1840,16 @@ class TransactionController extends Controller
             return response()->json(['message' => 'Invalid charge type.'], 500);
         }
 
-        // Merchant charge logic
+        // Merchant charge logic - link by user id (FK on charges)
+        // with legacy email-based fallback for any pre-FK rows.
         $merchantCharge = Charge::active()
-            ->where('merchant_user_name', $authenticatedUser->email)
+            ->where(function ($q) use ($authenticatedUser) {
+                $q->where('merchant_user_id', $authenticatedUser->id)
+                  ->orWhere(function ($q2) use ($authenticatedUser) {
+                      $q2->whereNull('merchant_user_id')
+                         ->where('merchant_user_name', $authenticatedUser->email);
+                  });
+            })
             ->where('charge_source', 'MERCHANT')
             ->where('currency', $currency)
             ->where('min_threshold', '<=', $amount)
@@ -1889,6 +1907,33 @@ class TransactionController extends Controller
                 'url' => $checkoutUrl,
             ],
         ], 200);
+    }
+
+    /**
+     * Accept EcoCash's provider-side notify callback. We set this URL as the
+     * `notifyUrl` we send to EcoCash so their JSON lands on the gateway and
+     * never reaches the merchant directly. The merchant only ever sees our
+     * own webhook (which carries customer_reference, status etc.).
+     */
+    public function handleEcocashNotify(Request $request)
+    {
+        $reference = $request->input('referenceCode') ?? $request->input('clientCorrelator');
+        $status = $request->input('transactionOperationStatus');
+
+        $this->audit([
+            'trace' => $reference,
+            'reference' => $reference,
+            'payment_method' => 'ECOCASH',
+            'stage' => 'PROVIDER_CALLBACK',
+            'event' => 'ECOCASH_NOTIFY_RECEIVED',
+            'level' => 'INFO',
+            'provider' => 'ECOCASH',
+            'endpoint' => $request->fullUrl(),
+            'request_payload' => $request->all(),
+            'meta_data' => ['status' => $status],
+        ]);
+
+        return response()->json(['received' => true], 200);
     }
 
     /**
@@ -2001,13 +2046,17 @@ class TransactionController extends Controller
                 // Redirect to success page or merchant return URL
                 return redirect()->to('/payment/success?reference=' . $transaction->reference);
             } else {
-                // Payment failed, update transaction to failed
+                // Route through handleFailedTransaction so the merchant
+                // webhook fires with the same shape as every other failure
+                // path. Preserve the original ZimSwitch response on the row.
                 $transaction->update([
-                    'status' => 'FAILED',
-                    'response_code' => $paymentStatus['responseCode'] ?? '01',
-                    'error_message' => $paymentStatus['message'] ?? 'Payment failed',
-                    'response' => json_encode($paymentStatus['responseData'])
+                    'response' => json_encode($paymentStatus['responseData']),
                 ]);
+                $this->handleFailedTransaction(
+                    $transaction,
+                    $paymentStatus['message'] ?? 'Payment failed',
+                    $paymentStatus['responseCode'] ?? '01'
+                );
 
                 // Redirect to failure page or merchant return URL
                 return redirect()->to('/payment/failed?reference=' . $transaction->reference);

@@ -49,6 +49,11 @@ const routes = [
           path: 'charges',
           name: 'charges',
           component: () => import('./components/pages/Charges.vue')
+        },
+        {
+          path: 'payouts',
+          name: 'payouts',
+          component: () => import('./components/pages/Payouts.vue')
         }
       ]
     },
@@ -81,6 +86,11 @@ const routes = [
           path: 'transactions',
           name: 'super-transactions',
           component: () => import('./components/pages/SuperTransactions.vue')
+        },
+        {
+          path: 'payouts',
+          name: 'super-payouts',
+          component: () => import('./components/pages/SuperPayouts.vue')
         }
       ]
     },

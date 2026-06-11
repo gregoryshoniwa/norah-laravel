@@ -68,7 +68,9 @@
               <td>{{ charge.charge_type }}</td>
               <td>{{ charge.charge_source }}</td>
               <td>{{ charge.charge_category }}</td>
-              <td>{{ charge.merchant_user_name || '—' }}</td>
+              <td>
+                {{ charge.merchant_name || charge.merchantUser?.email || charge.merchant_user_name || '—' }}
+              </td>
               <td>{{ charge.currency }}</td>
               <td>{{ formatValue(charge.value) }}</td>
               <td>{{ formatValue(charge.min_threshold) }}</td>
@@ -105,14 +107,14 @@
               <div class="form-column">
                 <div class="form-group" v-if="!editingCharge">
                   <label>Merchant</label>
-                  <select v-model="form.merchantUserName" required>
-                    <option value="" disabled>Select a merchant</option>
+                  <select v-model="form.merchantUserId" required>
+                    <option :value="null" disabled>Select a merchant</option>
                     <option
                       v-for="m in merchants"
-                      :key="m.id"
-                      :value="m.merchant_email || (m.user && m.user.email)"
+                      :key="m.merchant_id"
+                      :value="m.user_id || (m.user && m.user.id)"
                     >
-                      {{ m.merchant_name }} ({{ m.merchant_email || (m.user && m.user.email) }})
+                      {{ m.merchant_name }} — {{ m.merchant_email || '—' }}
                     </option>
                   </select>
                 </div>
@@ -196,7 +198,7 @@ export default {
       editingCharge: null,
       search: '',
       form: {
-        merchantUserName: '',
+        merchantUserId: null,
         chargeType: '',
         chargeSource: '',
         chargeCategory: '',
@@ -218,6 +220,7 @@ export default {
         (c.charge_type || '').toLowerCase().includes(q) ||
         (c.charge_source || '').toLowerCase().includes(q) ||
         (c.charge_category || '').toLowerCase().includes(q) ||
+        (c.merchant_name || '').toLowerCase().includes(q) ||
         (c.merchant_user_name || '').toLowerCase().includes(q) ||
         (c.currency || '').toLowerCase().includes(q)
       );
@@ -272,7 +275,7 @@ export default {
     editCharge(charge) {
       this.editingCharge = charge;
       this.form = {
-        merchantUserName: charge.merchant_user_name || '',
+        merchantUserId: charge.merchant_user_id || null,
         chargeType: charge.charge_type,
         chargeSource: charge.charge_source,
         chargeCategory: charge.charge_category,
@@ -289,7 +292,7 @@ export default {
 
     resetForm() {
       this.form = {
-        merchantUserName: '',
+        merchantUserId: null,
         chargeType: '',
         chargeSource: '',
         chargeCategory: '',
@@ -321,14 +324,17 @@ export default {
 
         if (this.editingCharge) {
           await axios.put(`/api/v1/merchant/charges/${this.editingCharge.id}`, payload);
-          this.$swal.fire('Success!', 'Charge updated successfully', 'success');
         } else {
-          payload.merchantUserName = this.form.merchantUserName;
+          payload.merchantUserId = this.form.merchantUserId;
           await axios.post('/api/v1/merchant/charges/add', payload);
-          this.$swal.fire('Success!', 'Charge created successfully', 'success');
         }
+        await this.loadCharges();
         this.closeModal();
-        this.loadCharges();
+        this.$swal.fire(
+          'Success!',
+          this.editingCharge ? 'Charge updated successfully' : 'Charge created successfully',
+          'success'
+        );
       } catch (error) {
         this.$swal.fire('Error!', error.response?.data?.message || 'Operation failed', 'error');
       } finally {

@@ -101,6 +101,42 @@ Route::middleware([JwtMiddleware::class])->group(function () {
     Route::get('/settings', [SettingsController::class, 'getSettings']); // Get user settings
     Route::post('/settings', [SettingsController::class, 'saveSettings']); // Save user settings
     Route::delete('/settings/reset', [SettingsController::class, 'resetSettings']); // Reset user settings to defaults
+
+    // Self-service company profile + bank details
+    Route::get('/profile', [\App\Http\Controllers\CompanyProfileController::class, 'show']);
+    Route::put('/profile', [\App\Http\Controllers\CompanyProfileController::class, 'update']);
+    Route::put('/profile/bank', [\App\Http\Controllers\CompanyProfileController::class, 'updateBank']);
+    Route::get('/super/profile/{userId}', [\App\Http\Controllers\CompanyProfileController::class, 'superShow'])->whereNumber('userId');
+    Route::put('/super/profile/{userId}', [\App\Http\Controllers\CompanyProfileController::class, 'superUpdate'])->whereNumber('userId');
+
+    // Payout self-service (ADMIN / MERCHANT)
+    Route::get('/payouts/expected', [\App\Http\Controllers\PayoutController::class, 'expected']);
+    Route::get('/payouts', [\App\Http\Controllers\PayoutController::class, 'index']);
+    Route::get('/payouts/{id}', [\App\Http\Controllers\PayoutController::class, 'show'])->whereNumber('id');
+    Route::post('/payouts/{id}/confirm', [\App\Http\Controllers\PayoutController::class, 'confirm'])->whereNumber('id');
+    Route::post('/payouts/{id}/dispute', [\App\Http\Controllers\PayoutController::class, 'dispute'])->whereNumber('id');
+    Route::get('/payouts/messages', [\App\Http\Controllers\PayoutController::class, 'listMessages']);
+    Route::post('/payouts/messages', [\App\Http\Controllers\PayoutController::class, 'createMessage']);
+    Route::get('/payouts/messages/{id}', [\App\Http\Controllers\PayoutController::class, 'showThread'])->whereNumber('id');
+    Route::post('/payouts/messages/{id}/reply', [\App\Http\Controllers\PayoutController::class, 'reply'])->whereNumber('id');
+
+    // Super-admin payouts
+    Route::get('/super/payouts/outstanding', [\App\Http\Controllers\SuperPayoutController::class, 'outstanding']);
+    Route::get('/super/payouts/profit-loss', [\App\Http\Controllers\SuperPayoutController::class, 'profitLoss']);
+    Route::get('/super/payouts/messages', [\App\Http\Controllers\SuperPayoutController::class, 'inbox']);
+    Route::get('/super/payouts/messages/{id}', [\App\Http\Controllers\SuperPayoutController::class, 'thread'])->whereNumber('id');
+    Route::post('/super/payouts/messages/{id}/reply', [\App\Http\Controllers\SuperPayoutController::class, 'reply'])->whereNumber('id');
+    Route::get('/super/payouts', [\App\Http\Controllers\SuperPayoutController::class, 'index']);
+    Route::post('/super/payouts', [\App\Http\Controllers\SuperPayoutController::class, 'store']);
+    Route::get('/super/payouts/{id}', [\App\Http\Controllers\SuperPayoutController::class, 'show'])->whereNumber('id');
+    Route::post('/super/payouts/{id}/send', [\App\Http\Controllers\SuperPayoutController::class, 'send'])->whereNumber('id');
+
+    // Auto-scheduled payouts
+    Route::get('/super/payout-schedules', [\App\Http\Controllers\SuperPayoutController::class, 'listSchedules']);
+    Route::post('/super/payout-schedules', [\App\Http\Controllers\SuperPayoutController::class, 'storeSchedule']);
+    Route::put('/super/payout-schedules/{id}', [\App\Http\Controllers\SuperPayoutController::class, 'updateSchedule'])->whereNumber('id');
+    Route::delete('/super/payout-schedules/{id}', [\App\Http\Controllers\SuperPayoutController::class, 'deleteSchedule'])->whereNumber('id');
+    Route::post('/super/payout-schedules/{id}/run-now', [\App\Http\Controllers\SuperPayoutController::class, 'runScheduleNow'])->whereNumber('id');
 });
 Route::post('/transactions/confirmation', [TransactionController::class, 'confirmTransaction']);
 Route::post('/transactions/omari-otp', [TransactionController::class, 'processOmariOtp']);

@@ -148,9 +148,11 @@ class ChargesController extends Controller
 
     public function addMerchantCharge(Request $request)
     {
-        // Validate the request
+        // Accept either the new merchantUserId FK or the legacy merchantUserName
+        // (email) for backwards compatibility while the front-end is updated.
         $request->validate([
-            'merchantUserName' => 'required|string|exists:users,email', // Ensure the merchant exists
+            'merchantUserId' => 'sometimes|nullable|integer|exists:users,id',
+            'merchantUserName' => 'sometimes|nullable|string|exists:users,email',
             'chargeType' => 'required|string|max:255',
             'chargeSource' => 'required|string|max:255',
             'chargeCategory' => 'required|string|max:255',
@@ -169,19 +171,27 @@ class ChargesController extends Controller
             return response()->json(['message' => 'Unauthorized. Only ADMIN users can add merchant charges.'], 403);
         }
 
-        // Check if the merchant belongs to the same company as the authenticated ADMIN user
-        $merchant = User::where('email', $request->merchantUserName)->first();
-        if (!$merchant || $merchant->company_name !== $authenticatedUser->company_name) {
-            return response()->json(['message' => 'Unauthorized. The specified merchant does not belong to the same company as this ADMIN user.'], 403);
+        // Resolve the merchant. Prefer the FK; fall back to email lookup.
+        $merchant = $request->filled('merchantUserId')
+            ? User::find($request->merchantUserId)
+            : User::where('email', $request->merchantUserName)->first();
+
+        if (!$merchant || $merchant->role !== 'MERCHANT') {
+            return response()->json(['message' => 'Invalid merchant.'], 422);
         }
 
-        // Check if the merchant exists in the merchants table
-        $merchantRecord = Merchant::where('user_id', $merchant->id)->first();
-        if (!$merchantRecord) {
-            return response()->json(['message' => 'Unauthorized. The specified merchant is not registered.'], 403);
+        // Ownership check by primary_user (the actual link, not company_name).
+        if ((int) $merchant->primary_user !== (int) $authenticatedUser->id) {
+            return response()->json(['message' => 'Unauthorized. The specified merchant does not belong to your company.'], 403);
         }
 
-        // Create the charge for the merchant
+        // Confirm merchant record exists.
+        if (!Merchant::where('user_id', $merchant->id)->exists()) {
+            return response()->json(['message' => 'Specified merchant is not registered.'], 422);
+        }
+
+        // Create the charge for the merchant - linked by merchant_user_id (FK).
+        // merchant_user_name is preserved for display only.
         $charge = Charge::create([
             'charge_type' => $request->chargeType,
             'charge_source' => $request->chargeSource,
@@ -193,12 +203,13 @@ class ChargesController extends Controller
             'min_threshold' => $request->minThreshold,
             'max_threshold' => $request->maxThreshold,
             'pl_account' => $request->plAccount,
-            'merchant_user_name' => $request->merchantUserName, // Associate the charge with the merchant
+            'merchant_user_id' => $merchant->id,
+            'merchant_user_name' => $merchant->email,
             'deleted' => false,
         ]);
 
-        // Return the response
         return response()->json([
+            'success' => true,
             'message' => 'Charge added successfully for the merchant.',
             'data' => $charge,
         ], 201);
@@ -212,16 +223,27 @@ class ChargesController extends Controller
         return response()->json(['message' => 'Unauthorized. Only ADMIN users can view charges.'], 403);
     }
 
-    // Retrieve charges only for the authenticated user's company
-    $charges = Charge::whereHas('merchant', function ($query) use ($authenticatedUser) {
-        $query->where('company_name', $authenticatedUser->company_name);
-    })->get();
+    // Find all merchants owned by this admin (real ownership, not label).
+    $merchantUserIds = User::where('role', 'MERCHANT')
+        ->where('primary_user', $authenticatedUser->id)
+        ->pluck('id');
 
-    if ($charges->isEmpty()) {
-        return response()->json(['message' => 'No charges found for your company.'], 404);
+    // Eager-load the merchant user so the UI can show their name.
+    $charges = Charge::with(['merchantUser:id,email,first_name,last_name'])
+        ->whereIn('merchant_user_id', $merchantUserIds)
+        ->get();
+
+    // Attach a friendly merchant_name field by joining to the Merchant record.
+    $merchantNames = Merchant::whereIn('user_id', $merchantUserIds)
+        ->pluck('merchant_name', 'user_id');
+    foreach ($charges as $c) {
+        $c->merchant_name = $merchantNames[$c->merchant_user_id] ?? null;
     }
 
-    return response()->json($charges, 200);
+    return response()->json([
+        'success' => true,
+        'data' => $charges,
+    ], 200);
 }
 
 public function getChargesByMerchant($merchantUserName)
