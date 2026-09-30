@@ -14,6 +14,13 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api/v1',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Provider callbacks POST to these web routes from outside the app and
+        // carry no CSRF token.
+        $middleware->validateCsrfTokens(except: [
+            'payment/ecocash/notify',
+            'payment/iveri/callback',
+        ]);
+
         // $middleware->alias([
         //     'jwt.verify' => JwtMiddleware::class
         // ]);

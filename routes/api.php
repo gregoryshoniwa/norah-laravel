@@ -10,6 +10,7 @@ use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TransactionAuditController;
 use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\TokenController;
+use App\Http\Controllers\EcocashApiController;
 use App\Http\Middleware\JwtMiddleware;
 
 Route::post('/register', [AuthController::class, 'register']);
@@ -138,6 +139,13 @@ Route::middleware([JwtMiddleware::class])->group(function () {
     Route::delete('/super/payout-schedules/{id}', [\App\Http\Controllers\SuperPayoutController::class, 'deleteSchedule'])->whereNumber('id');
     Route::post('/super/payout-schedules/{id}/run-now', [\App\Http\Controllers\SuperPayoutController::class, 'runScheduleNow'])->whereNumber('id');
 });
+// Direct EcoCash API (server-to-server, no hosted checkout page).
+// Auth: Bearer JWT from /merchant-sign-in (MERCHANT) or /auth/sign-in (ADMIN).
+Route::middleware([JwtMiddleware::class, 'throttle:ecocash-direct'])->prefix('ecocash')->group(function () {
+    Route::post('/pay', [EcocashApiController::class, 'pay']);                    // Trigger USSD prompt, returns trace
+    Route::get('/status/{trace}', [EcocashApiController::class, 'status']);       // Poll + finalize
+});
+
 Route::post('/transactions/confirmation', [TransactionController::class, 'confirmTransaction']);
 Route::post('/transactions/omari-otp', [TransactionController::class, 'processOmariOtp']);
 Route::post('/transactions/process', [TransactionController::class, 'processTransaction']);

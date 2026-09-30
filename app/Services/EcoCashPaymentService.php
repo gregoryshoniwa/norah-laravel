@@ -27,7 +27,10 @@ class EcoCashPaymentService
     public function createPaymentRequest(array $request)
     {
         $auth = base64_encode("{$this->username}:{$this->password}");
-        $reference = "NPG_" . time();
+        // time() alone collides when two payments start in the same second,
+        // which the direct API makes likely. The suffix keeps clientCorrelator
+        // unique while staying short.
+        $reference = "NPG_" . time() . random_int(100, 999);
         $trace = $request['_auditTrace'] ?? null;
 
         $user = User::where('email', $request['user'])->first();

@@ -14,3 +14,11 @@ Schedule::command('payouts:run-scheduled')
     ->dailyAt('02:00')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Finalize EcoCash payments whose outcome was never collected by a poll or
+// the provider notify callback (direct-API clients that stopped polling,
+// lost callbacks). Same schedule:run cron entry as above.
+Schedule::command('ecocash:reconcile-pending')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->onOneServer();

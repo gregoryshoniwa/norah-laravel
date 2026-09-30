@@ -21,6 +21,8 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
+use App\Services\ChargeCalculator;
 
 class TransactionController extends Controller
 {
@@ -30,6 +32,7 @@ class TransactionController extends Controller
     protected $zimswitchService;
     protected $iveriService;
     protected $transactionAuditService;
+    protected $chargeCalculator;
 
 
     public function __construct(
@@ -38,7 +41,8 @@ class TransactionController extends Controller
         OmariPaymentService $omariService,
         ZimswitchPaymentService $zimswitchService,
         IVeriPaymentService $iveriService,
-        TransactionAuditService $transactionAuditService
+        TransactionAuditService $transactionAuditService,
+        ChargeCalculator $chargeCalculator
     )
     {
         $this->innbucksService = $innbucksService;
@@ -47,6 +51,7 @@ class TransactionController extends Controller
         $this->zimswitchService = $zimswitchService;
         $this->iveriService = $iveriService;
         $this->transactionAuditService = $transactionAuditService;
+        $this->chargeCalculator = $chargeCalculator;
     }
 
     public function confirmTransaction(Request $request)
@@ -337,7 +342,29 @@ class TransactionController extends Controller
         }
     }
 
+    /**
+     * Status check + finalization entry point. Used by the checkout poll,
+     * the direct EcoCash API, the EcoCash notify callback and the reconcile
+     * command. Finalization is serialised per trace with a cache lock so two
+     * concurrent callers can never both run finalizeSuccessfulTransaction
+     * (which inserts a new PAYMENT row each time it runs).
+     */
     public function checkTransactionStatus(Request $request)
+    {
+        $trace = (string) $request->trace;
+        $lock = Cache::lock('txn-finalize:' . $trace, 30);
+        $lockAcquired = $lock->get();
+
+        try {
+            return $this->resolveTransactionStatus($request, $lockAcquired);
+        } finally {
+            if ($lockAcquired) {
+                $lock->release();
+            }
+        }
+    }
+
+    protected function resolveTransactionStatus(Request $request, bool $lockAcquired)
     {
         $trace = $request->trace;
         $this->audit([
@@ -364,6 +391,19 @@ class TransactionController extends Controller
                     'success' => false,
                     'message' => 'Transaction not found.',
                 ], 404);
+            }
+
+            // A CONFIRM row that has already been finalized is marked PROCESSED
+            // and its outcome lives on the child PAYMENT row. Echo that row
+            // instead of re-running the inquiry, which would finalize twice.
+            if ($transaction->type === 'CONFIRM' && $transaction->status === 'PROCESSED') {
+                $paymentRow = Transaction::where('parent_transaction_id', $transaction->id)
+                    ->where('type', 'PAYMENT')
+                    ->orderByDesc('id')
+                    ->first();
+                if ($paymentRow) {
+                    $transaction = $paymentRow;
+                }
             }
 
             // Check if cancelled
@@ -400,6 +440,30 @@ class TransactionController extends Controller
                     'returnUrl' => $user->return_url ?? null,
                     'responseMessage' => $transaction->error_message ?? 'Transaction failed.',
                     'data' => json_decode($transaction->response, true),
+                ]);
+            }
+
+            // Another caller holds the finalization lock for this trace and is
+            // querying the provider right now. Report PENDING; the next poll
+            // will see the finalized row.
+            if (!$lockAcquired) {
+                $this->audit([
+                    'transaction_id' => $transaction->id,
+                    'user_id' => $transaction->user_id,
+                    'trace' => $trace,
+                    'reference' => $transaction->reference,
+                    'payment_method' => $transaction->payment_method,
+                    'stage' => 'STATUS_CHECK',
+                    'event' => 'STATUS_CHECK_LOCK_BUSY',
+                    'level' => 'INFO',
+                ]);
+                return response()->json([
+                    'success' => true,
+                    'status' => 'PENDING',
+                    'trace' => $trace,
+                    'message' => 'Transaction is still being processed.',
+                    'shouldPoll' => true,
+                    'paymentMethod' => $transaction->payment_method
                 ]);
             }
 
@@ -1058,31 +1122,14 @@ class TransactionController extends Controller
         $amount = $request->amount;
         $currency = $request->currency;
         $customerReference = $this->normaliseCustomerReference($request->input('customerReference'));
-        $calculatedSystemCharge = 0;
-
-        // Retrieve the system charge based on the currency and thresholds
-        $systemCharge = SystemCharge::active()
-            ->where('user_email', $authenticatedUser->email)
-            ->where('currency', $currency)
-            ->where('min_threshold', '<=', $amount)
-            ->where('max_threshold', '>=', $amount)
-            ->first();
-
-        if (!$systemCharge) {
-            return response()->json(['message' => 'No applicable system charge found for this user and the given amount and currency.'], 404);
+        try {
+            $quote = $this->chargeCalculator->quote($authenticatedUser, (float) $amount, $currency);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 404);
         }
 
-        // Calculate the system charge based on the charge_type
-        if ($systemCharge->charge_type === 'FLAT') {
-            $calculatedSystemCharge = $systemCharge->value;
-        } elseif ($systemCharge->charge_type === 'PERCENTAGE') {
-            $calculatedSystemCharge = $amount * ($systemCharge->value / 100);
-        } else {
-            return response()->json(['message' => 'Invalid charge type.'], 500);
-        }
-
-        $totalCharge = $calculatedSystemCharge;
-        $totalAmount = $amount + $totalCharge;
+        $totalCharge = $quote['total_charge'];
+        $totalAmount = $quote['total_amount'];
 
         // Generate the token payload
         $payload = [
@@ -1805,71 +1852,14 @@ class TransactionController extends Controller
         $amount = $request->amount;
         $currency = $request->currency;
         $customerReference = $this->normaliseCustomerReference($request->input('customerReference'));
-        $calculatedSystemCharge = 0;
-
-        // Find the user associated with the authenticated user
-        $merchant = User::where('id', $authenticatedUser->id)->first();
-        if (!$merchant) {
-            return response()->json(['message' => 'Merchant not found.'], 404);
+        try {
+            $quote = $this->chargeCalculator->quote($authenticatedUser, (float) $amount, $currency);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 404);
         }
 
-        // Find the parent user
-        $parentUser = User::where('id', $merchant->primary_user)->first();
-        if (!$parentUser) {
-            return response()->json(['message' => 'Parent Account not found.'], 404);
-        }
-
-        // System charge logic
-        $systemCharge = SystemCharge::active()
-            ->where('user_email', $parentUser->email)
-            ->where('currency', $currency)
-            ->where('min_threshold', '<=', $amount)
-            ->where('max_threshold', '>=', $amount)
-            ->first();
-
-        if (!$systemCharge) {
-            return response()->json(['message' => 'No applicable system charge found for this user and the given amount and currency.'], 404);
-        }
-
-        // Calculate the system charge based on the charge_type
-        if ($systemCharge->charge_type === 'FLAT') {
-            $calculatedSystemCharge = $systemCharge->value;
-        } elseif ($systemCharge->charge_type === 'PERCENTAGE') {
-            $calculatedSystemCharge = $amount * ($systemCharge->value / 100);
-        } else {
-            return response()->json(['message' => 'Invalid charge type.'], 500);
-        }
-
-        // Merchant charge logic - link by user id (FK on charges)
-        // with legacy email-based fallback for any pre-FK rows.
-        $merchantCharge = Charge::active()
-            ->where(function ($q) use ($authenticatedUser) {
-                $q->where('merchant_user_id', $authenticatedUser->id)
-                  ->orWhere(function ($q2) use ($authenticatedUser) {
-                      $q2->whereNull('merchant_user_id')
-                         ->where('merchant_user_name', $authenticatedUser->email);
-                  });
-            })
-            ->where('charge_source', 'MERCHANT')
-            ->where('currency', $currency)
-            ->where('min_threshold', '<=', $amount)
-            ->where('max_threshold', '>=', $amount)
-            ->first();
-
-        if ($merchantCharge) {
-            if ($merchantCharge->charge_type === 'FLAT') {
-                $calculatedMerchantCharge = $merchantCharge->value;
-            } elseif ($merchantCharge->charge_type === 'PERCENTAGE') {
-                $calculatedMerchantCharge = $amount * ($merchantCharge->value / 100);
-            } else {
-                return response()->json(['message' => 'Invalid charge type.'], 500);
-            }
-        } else {
-            $calculatedMerchantCharge = 0;
-        }
-
-        $totalCharge = $calculatedMerchantCharge + $calculatedSystemCharge;
-        $totalAmount = $amount + $totalCharge;
+        $totalCharge = $quote['total_charge'];
+        $totalAmount = $quote['total_amount'];
 
         $merchantUser = Merchant::where('user_id', $authenticatedUser->id)->first();
 
@@ -1932,6 +1922,27 @@ class TransactionController extends Controller
             'request_payload' => $request->all(),
             'meta_data' => ['status' => $status],
         ]);
+
+        // Finalize server-side so direct-API clients that never poll still get
+        // the PAYMENT row, the charge rows and their merchant webhook. The
+        // notify payload itself is not trusted: checkTransactionStatus
+        // re-queries EcoCash before writing anything.
+        if ($reference) {
+            $pending = Transaction::where('reference', $reference)
+                ->where('payment_method', 'ECOCASH')
+                ->where('type', 'CONFIRM')
+                ->where('status', 'PENDING')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($pending) {
+                try {
+                    $this->checkTransactionStatus(new Request(['trace' => $pending->trace]));
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+        }
 
         return response()->json(['received' => true], 200);
     }

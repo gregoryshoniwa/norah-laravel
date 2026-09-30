@@ -22,6 +22,17 @@ class JwtMiddleware
         try {
             // Attempt to parse and authenticate the token
             $user = JWTAuth::parseToken()->authenticate();
+
+            // authenticate() returns false (it does not throw) when the token
+            // is well-formed but its subject no longer exists, e.g. a deleted
+            // account. Treat that as unauthenticated rather than letting the
+            // request through with no user.
+            if (!$user) {
+                return response()->json([
+                    'status' => 'ERROR',
+                    'message' => 'Token subject not found.',
+                ], 401);
+            }
         } catch (TokenExpiredException $e) {
             return response()->json([
                 'status' => 'ERROR',
